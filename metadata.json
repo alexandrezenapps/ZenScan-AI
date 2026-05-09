@@ -1,0 +1,8 @@
+{
+  "name": "ZenScan AI",
+  "description": "Premium AI-powered document scanner and intelligent data extractor. Apple-like dark-first design with minimal OCR and automated workflows.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
