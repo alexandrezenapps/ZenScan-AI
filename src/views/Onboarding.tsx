@@ -5,7 +5,8 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bot, Sparkles, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Bot, Sparkles, ShieldCheck, ArrowRight, Loader2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -13,6 +14,9 @@ interface OnboardingProps {
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState(0);
+  const { signInWithGoogle, user } = useAuth();
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const slides = [
     {
@@ -38,11 +42,32 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
   ];
 
-  const next = () => {
+  const handleNext = async () => {
+    setError(null);
     if (step < slides.length - 1) {
       setStep(step + 1);
     } else {
-      onComplete();
+      if (!user) {
+        try {
+          setIsLoggingIn(true);
+          await signInWithGoogle();
+        } catch (err: any) {
+          console.error("Login failed", err);
+          let message = "La connexion a échoué. ";
+          if (err.message?.includes('popup-closed-by-user')) {
+            message += "La fenêtre de connexion a été fermée.";
+          } else if (err.message?.includes('popup-blocked')) {
+            message += "Le bloqueur de fenêtres surgissantes empêche la connexion.";
+          } else {
+            message += "Veuillez réessayer ou vérifier vos paramètres.";
+          }
+          setError(message);
+        } finally {
+          setIsLoggingIn(false);
+        }
+      } else {
+        onComplete();
+      }
     }
   };
 
@@ -69,23 +94,23 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             animate={{ opacity: 1, scale: 1, x: 0 }}
             exit={{ opacity: 0, scale: 1.1, x: -100 }}
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="space-y-12"
+            className="space-y-8 md:space-y-12"
           >
-            <div className="w-48 h-48 mx-auto rounded-[48px] bg-primary-900 border border-white/5 flex items-center justify-center ai-glow relative overflow-hidden shadow-2xl">
+            <div className="w-32 h-32 md:w-48 md:h-48 mx-auto rounded-[32px] md:rounded-[48px] bg-primary-900 border border-white/5 flex items-center justify-center ai-glow relative overflow-hidden shadow-2xl">
               <motion.div 
                 initial={{ rotate: -10, opacity: 0 }}
                 animate={{ rotate: 0, opacity: 1 }}
                 transition={{ delay: 0.2, duration: 0.8 }}
-                className={`absolute inset-6 rounded-[32px] ${slides[step].bg} blur-2xl`} 
+                className={`absolute inset-4 md:inset-6 rounded-[24px] md:rounded-[32px] ${slides[step].bg} blur-2xl`} 
               />
-              <Icon className={`w-20 h-20 ${slides[step].color} relative z-10`} />
+              <Icon className={`w-14 h-14 md:w-20 md:h-20 ${slides[step].color} relative z-10`} />
             </div>
 
-            <div className="space-y-5">
-              <h2 className="text-[44px] font-extrabold text-white tracking-tighter leading-none">
+            <div className="space-y-3 md:space-y-5">
+              <h2 className="text-4xl md:text-[44px] font-extrabold text-white tracking-tighter leading-none">
                 {slides[step].title}
               </h2>
-              <p className="text-gray-400 text-xl font-medium leading-relaxed px-2">
+              <p className="text-zinc-500 text-base md:text-xl font-medium leading-relaxed px-4">
                 {slides[step].description}
               </p>
             </div>
@@ -93,7 +118,16 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         </AnimatePresence>
       </div>
 
-      <div className="w-full max-w-sm space-y-12">
+      <div className="w-full max-w-sm space-y-8 md:space-y-12">
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold text-center"
+          >
+            {error}
+          </motion.div>
+        )}
         {/* Indicators */}
         <div className="flex justify-center gap-3">
           {slides.map((_, i) => (
@@ -105,7 +139,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 backgroundColor: step === i ? '#4F7CFF' : 'rgba(255,255,255,0.05)'
               }}
               transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-              className="h-2 rounded-full cursor-pointer hover:bg-white/20 transition-colors"
+              className="h-1.5 md:h-2 rounded-full cursor-pointer hover:bg-white/20 transition-colors"
               onClick={() => setStep(i)}
             />
           ))}
@@ -113,17 +147,26 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
         {/* Action Button */}
         <button
-          onClick={next}
-          className="group relative w-full h-18 bg-ai-gradient rounded-3xl text-white font-black text-xl ai-glow flex items-center justify-center gap-4 active:scale-[0.96] transition-all shadow-[0_20px_50px_rgba(79,124,255,0.3)] hover:shadow-[0_25px_60px_rgba(79,124,255,0.5)]"
+          onClick={handleNext}
+          disabled={isLoggingIn}
+          className="group relative w-full h-16 md:h-18 bg-ai-gradient rounded-2xl md:rounded-3xl text-white font-black text-lg md:text-xl ai-glow flex items-center justify-center gap-4 active:scale-[0.96] transition-all shadow-xl disabled:opacity-50"
         >
-          <span className="relative z-10">{step === slides.length - 1 ? 'C\'est parti' : 'Suivant'}</span>
-          <motion.div 
-            animate={{ x: [0, 5, 0] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            className="relative z-10"
-          >
-            <ArrowRight className="w-7 h-7" />
-          </motion.div>
+          {isLoggingIn ? (
+            <Loader2 className="w-7 h-7 animate-spin" />
+          ) : (
+            <>
+              <span className="relative z-10">
+                {step === slides.length - 1 ? (user ? 'Accéder' : 'S\'authentifier avec Google') : 'Suivant'}
+              </span>
+              <motion.div 
+                animate={{ x: [0, 5, 0] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="relative z-10"
+              >
+                <ArrowRight className="w-6 h-6 md:w-7 md:h-7" />
+              </motion.div>
+            </>
+          )}
         </button>
       </div>
     </div>

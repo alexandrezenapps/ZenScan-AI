@@ -3,15 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Bolt, Zap, Camera, Image as ImageIcon, RotateCcw, Settings, Layers } from 'lucide-react';
+import { X, Bolt, Zap, Camera, Image as ImageIcon, RotateCcw, Settings, Layers, RefreshCw } from 'lucide-react';
 import { AppView, ScanStatus } from '../types';
 import { GlassCard } from '../components/PremiumComponents';
 
 interface ScannerProps {
   onNavigate: (view: AppView) => void;
-  onScanComplete: () => void;
+  onScanComplete: (imageData?: string) => void;
 }
 
 export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
@@ -19,18 +19,73 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
   const [activeMode, setActiveMode] = useState('DOCUMENT');
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showFlash, setShowFlash] = useState(false);
+  const [hasCameraAccess, setHasCameraAccess] = useState<boolean | null>(null);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  const startCamera = async () => {
+    stopCamera();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setHasCameraAccess(true);
+    } catch (err) {
+      console.error("Error accessing camera:", err);
+      setHasCameraAccess(false);
+    }
+  };
+
+  useEffect(() => {
+    startCamera();
+    return () => stopCamera();
+  }, [facingMode]);
 
   const modes = ['OCR', 'DOCUMENT', 'ID CARD', 'RECEIPT'];
 
   const startScan = () => {
+    if (status !== ScanStatus.IDLE) return;
+    
     setCountdown(null);
     setStatus(ScanStatus.SCANNING);
     
+    // Captured image from video
+    let capturedImage = '';
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0);
+        capturedImage = canvas.toDataURL('image/jpeg');
+      }
+    }
+
     // Simulate camera capture flash
     setTimeout(() => {
       setShowFlash(true);
-      setTimeout(() => setShowFlash(false), 200);
-      onScanComplete();
+      setTimeout(() => {
+        setShowFlash(false);
+        onScanComplete(capturedImage);
+      }, 200);
     }, 1500);
   };
 
@@ -89,10 +144,10 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
       {/* Top Header: Premium Glassmorphism */}
       <header className="absolute top-0 w-full z-20 flex justify-between items-center px-8 h-24 bg-gradient-to-b from-black/80 to-transparent">
         <button 
-          onClick={() => onNavigate('HOME')}
+          onClick={startCamera}
           className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 border border-white/10 backdrop-blur-3xl active:scale-90 transition-transform"
         >
-          <X className="w-6 h-6 text-white" />
+          <RotateCcw className="w-6 h-6 text-white" />
         </button>
         
         <div className="flex flex-col items-center">
@@ -106,13 +161,41 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
             </div>
         </div>
 
-        <button className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 border border-white/10 backdrop-blur-3xl active:scale-90 transition-transform">
-          <Settings className="w-6 h-6 text-white" />
+        <button 
+          onClick={() => setFacingMode(prev => prev === 'user' ? 'environment' : 'user')}
+          className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 border border-white/10 backdrop-blur-3xl active:scale-90 transition-transform"
+        >
+          <RefreshCw className="w-6 h-6 text-white" />
         </button>
       </header>
 
       {/* Main Viewport */}
       <main className="relative h-screen w-full flex items-center justify-center pt-24 pb-48">
+        {/* Real Camera Feed */}
+        <div className="absolute inset-0 bg-black">
+          {hasCameraAccess === false ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center space-y-4">
+              <Camera className="w-16 h-16 text-zinc-800" />
+              <p className="text-zinc-500 font-bold tracking-tight">Accès à la caméra refusé ou indisponible.</p>
+              <button 
+                onClick={startCamera}
+                className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs font-black uppercase tracking-widest text-white"
+              >
+                Réessayer
+              </button>
+            </div>
+          ) : (
+            <video 
+              ref={videoRef}
+              autoPlay 
+              playsInline 
+              muted
+              className="w-full h-full object-cover"
+              style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+            />
+          )}
+        </div>
+
         {/* Background Grid Pattern */}
         <div className="absolute inset-0 z-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:40px_40px]" />
 
@@ -225,10 +308,10 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
             </div>
 
             <button 
-              onClick={() => { setStatus(ScanStatus.IDLE); setCountdown(null); }}
+              onClick={() => onNavigate('HOME')}
               className="w-16 h-16 rounded-[24px] bg-white/5 border border-white/10 flex items-center justify-center text-white active:bg-white/20 transition-colors"
             >
-              <RotateCcw className="w-6 h-6" />
+              <X className="w-6 h-6" />
             </button>
           </div>
 

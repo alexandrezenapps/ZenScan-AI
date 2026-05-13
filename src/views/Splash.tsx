@@ -68,7 +68,7 @@ export default function Splash({ onFlush }: SplashProps) {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6, duration: 1, ease: [0.22, 1, 0.36, 1] }}
-            className="text-5xl font-extrabold tracking-tight text-white mb-2"
+            className="text-4xl md:text-5xl font-extrabold tracking-tight text-white mb-2"
           >
             ZenScan <span className="text-ai-blue">AI</span>
           </motion.h1>
@@ -76,7 +76,7 @@ export default function Splash({ onFlush }: SplashProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1, duration: 1 }}
-            className="text-[10px] font-black text-gray-500 uppercase tracking-[0.5em] mt-2 mb-10"
+            className="text-[9px] md:text-[10px] font-black text-gray-500 uppercase tracking-[0.5em] mt-2 mb-10"
           >
             Intelligence Documentaire Premium
           </motion.p>

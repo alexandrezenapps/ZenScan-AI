@@ -4,8 +4,11 @@
  */
 
 import { UserCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
+  const { user } = useAuth();
+
   return (
     <header className="px-8 py-6 flex justify-between items-center fixed top-0 w-full z-50 bg-primary-950/20 backdrop-blur-3xl border-b border-white/5">
       <div className="flex items-center gap-3 group cursor-pointer">
@@ -36,7 +39,11 @@ export default function Navbar() {
           <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Network Live</span>
         </div>
         <button className="h-11 w-11 rounded-2xl overflow-hidden border border-white/5 active:scale-90 transition-all flex items-center justify-center bg-white/[0.03] hover:bg-white/[0.08] shadow-lg">
-          <UserCircle className="w-6 h-6 text-zinc-400" />
+          {user?.photoURL ? (
+            <img src={user.photoURL} alt={user.displayName || 'User'} className="w-full h-full object-cover" />
+          ) : (
+            <UserCircle className="w-6 h-6 text-zinc-400" />
+          )}
         </button>
       </div>
     </header>

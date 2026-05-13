@@ -15,7 +15,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AppView } from './types';
+import { AppView, DocumentMetadata } from './types';
 import { updateAppMeta } from './lib/icons';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
@@ -28,15 +28,39 @@ import OCRAnalysis from './views/OCRAnalysis';
 import Editor from './views/Editor';
 import Assistant from './views/Assistant';
 import Settings from './views/Settings';
+import { useAuth } from './context/AuthContext';
+import { Loader2 } from 'lucide-react';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<AppView | 'SPLASH' | 'ONBOARDING'>('SPLASH');
+  const [selectedDocument, setSelectedDocument] = useState<DocumentMetadata | null>(null);
+  const [scannedImage, setScannedImage] = useState<string | null>(null);
+  const { user, loading } = useAuth();
 
   useEffect(() => {
     const color = localStorage.getItem('zenScanIconColor') || 'blue';
     const shape = localStorage.getItem('zenScanIconShape') || 'circle';
     updateAppMeta(color, shape);
   }, []);
+
+  // Handle Auth state changes for navigation
+  useEffect(() => {
+    if (!loading) {
+      if (user && (currentView === 'SPLASH' || currentView === 'ONBOARDING')) {
+        setCurrentView('HOME');
+      } else if (!user && currentView !== 'SPLASH' && currentView !== 'ONBOARDING') {
+        setCurrentView('ONBOARDING');
+      }
+    }
+  }, [user, loading, currentView]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-primary-950 flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-ai-blue animate-spin" />
+      </div>
+    );
+  }
 
   const renderView = () => {
     switch (currentView) {
@@ -47,13 +71,31 @@ export default function App() {
       case 'HOME':
         return <Home onNavigate={setCurrentView} />;
       case 'LIBRARY':
-        return <Library onNavigate={setCurrentView} />;
+        return <Library onNavigate={setCurrentView} onSelectDocument={setSelectedDocument} />;
       case 'SCANNER':
-        return <Scanner onNavigate={setCurrentView} onScanComplete={() => setCurrentView('OCR')} />;
+        return (
+          <Scanner 
+            onNavigate={setCurrentView} 
+            onScanComplete={(img) => {
+              setScannedImage(img || null);
+              setCurrentView('OCR');
+            }} 
+          />
+        );
       case 'OCR':
-        return <OCRAnalysis onNavigate={setCurrentView} onComplete={() => setCurrentView('EDITOR')} />;
+        return (
+          <OCRAnalysis 
+            onNavigate={setCurrentView} 
+            onComplete={() => {
+              setScannedImage(null);
+              setCurrentView('EDITOR');
+            }} 
+            onSelectDocument={setSelectedDocument}
+            scannedImage={scannedImage}
+          />
+        );
       case 'EDITOR':
-        return <Editor onNavigate={setCurrentView} />;
+        return <Editor onNavigate={setCurrentView} document={selectedDocument} />;
       case 'AI':
         return <Assistant onNavigate={setCurrentView} />;
       case 'SETTINGS':

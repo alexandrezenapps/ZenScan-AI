@@ -15,12 +15,15 @@ export interface DocumentMetadata {
   id: string;
   name: string;
   type: 'PDF' | 'JPG' | 'PNG';
+  category?: string;
   size: string;
   modifiedAt: Date;
+  createdAt?: Date;
   tags: string[];
   isAiEnhanced: boolean;
   contentSnippet?: string;
   extractedData?: Record<string, any>;
+  url?: string;
 }
 
 export interface ChatMessage {
@@ -31,4 +34,4 @@ export interface ChatMessage {
   type?: 'text' | 'analysis';
 }
 
-export type AppView = 'HOME' | 'LIBRARY' | 'SCANNER' | 'OCR' | 'EDITOR' | 'AI' | 'SETTINGS';
+export type AppView = 'HOME' | 'LIBRARY' | 'SCANNER' | 'OCR' | 'EDITOR' | 'AI' | 'SETTINGS' | 'ONBOARDING' | 'SPLASH';

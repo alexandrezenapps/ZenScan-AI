@@ -11,6 +11,8 @@ import sharp from "sharp";
 const app = express();
 const PORT = 3000;
 
+app.use(express.json());
+
 // Definitions for dynamic icons
 const COLORS: Record<string, string> = {
   blue: "#4F7CFF",
