@@ -14,6 +14,14 @@ export const RECENT_SCANS: DocumentMetadata[] = [
     modifiedAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
     tags: ['✨ AI Tagged', 'Finance'],
     isAiEnhanced: true,
+    contentSnippet: "Facture d'achat pour un lot de matériel informatique. Total TTC: 450.00 EUR.",
+    extractedData: {
+      'Vendor': 'Amazon Europe Core S.a.r.l.',
+      'Date': '15 Avril 2026',
+      'Total Amount': '450.00 €',
+      'Tax Amount': '75.00 €',
+      'Invoice #': 'AMZ-2026-4491'
+    }
   },
   {
     id: '2',
@@ -23,6 +31,14 @@ export const RECENT_SCANS: DocumentMetadata[] = [
     modifiedAt: new Date(Date.now() - 1000 * 60 * 60 * 5),
     tags: ['✨ AI Tagged', 'Legal'],
     isAiEnhanced: true,
+    contentSnippet: "Contrat de location pour appartement T3. Durée 12 mois renouvelables.",
+    extractedData: {
+      'Loyer': '1 200 € HC',
+      'Adresse': '42 Rue de la Paix',
+      'Locataire': 'Alexandre Zen',
+      'Bailleur': 'SCI Residence Zen',
+      'Dépôt de garantie': '2 400 €'
+    }
   },
   {
     id: '3',
@@ -32,6 +48,13 @@ export const RECENT_SCANS: DocumentMetadata[] = [
     modifiedAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
     tags: ['Identity'],
     isAiEnhanced: true,
+    contentSnippet: "Document d'identité nationale. Valide jusqu'en 2032.",
+    extractedData: {
+      'Document Type': 'Passeport',
+      'Nationality': 'Française',
+      'Expiry Date': '12 Janvier 2032',
+      'Date of Birth': '05 Mars 1995'
+    }
   }
 ];
 

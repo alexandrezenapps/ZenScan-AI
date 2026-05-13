@@ -16,6 +16,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppView } from './types';
+import { updateAppMeta } from './lib/icons';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import Splash from './views/Splash';
@@ -31,28 +32,34 @@ import Settings from './views/Settings';
 export default function App() {
   const [currentView, setCurrentView] = useState<AppView | 'SPLASH' | 'ONBOARDING'>('SPLASH');
 
+  useEffect(() => {
+    const color = localStorage.getItem('zenScanIconColor') || 'blue';
+    const shape = localStorage.getItem('zenScanIconShape') || 'circle';
+    updateAppMeta(color, shape);
+  }, []);
+
   const renderView = () => {
     switch (currentView) {
       case 'SPLASH':
-        return <Splash key="splash" onFlush={() => setCurrentView('ONBOARDING')} />;
+        return <Splash onFlush={() => setCurrentView('ONBOARDING')} />;
       case 'ONBOARDING':
-        return <Onboarding key="onboarding" onComplete={() => setCurrentView('HOME')} />;
+        return <Onboarding onComplete={() => setCurrentView('HOME')} />;
       case 'HOME':
-        return <Home key="home" onNavigate={setCurrentView} />;
+        return <Home onNavigate={setCurrentView} />;
       case 'LIBRARY':
-        return <Library key="library" onNavigate={setCurrentView} />;
+        return <Library onNavigate={setCurrentView} />;
       case 'SCANNER':
-        return <Scanner key="scanner" onNavigate={setCurrentView} onScanComplete={() => setCurrentView('OCR')} />;
+        return <Scanner onNavigate={setCurrentView} onScanComplete={() => setCurrentView('OCR')} />;
       case 'OCR':
-        return <OCRAnalysis key="ocr" onNavigate={setCurrentView} onComplete={() => setCurrentView('EDITOR')} />;
+        return <OCRAnalysis onNavigate={setCurrentView} onComplete={() => setCurrentView('EDITOR')} />;
       case 'EDITOR':
-        return <Editor key="editor" onNavigate={setCurrentView} />;
+        return <Editor onNavigate={setCurrentView} />;
       case 'AI':
-        return <Assistant key="assistant" onNavigate={setCurrentView} />;
+        return <Assistant onNavigate={setCurrentView} />;
       case 'SETTINGS':
-        return <Settings key="settings" onNavigate={setCurrentView} />;
+        return <Settings onNavigate={setCurrentView} />;
       default:
-        return <Home key="home" onNavigate={setCurrentView} />;
+        return <Home onNavigate={setCurrentView} />;
     }
   };
 

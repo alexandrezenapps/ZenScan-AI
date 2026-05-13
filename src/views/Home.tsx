@@ -157,7 +157,7 @@ export default function Home({ onNavigate }: HomeProps) {
                   </div>
                   <PrimaryButton 
                     text="Ouvrir l'Assistant" 
-                    onClick={() => onNavigate('ASSISTANT')}
+                    onClick={() => onNavigate('AI')}
                     className="w-full"
                   />
                </div>

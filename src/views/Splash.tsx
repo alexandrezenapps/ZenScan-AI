@@ -35,12 +35,12 @@ export default function Splash({ onFlush }: SplashProps) {
             transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
             className="w-full h-full rounded-[40px] bg-primary-900 border border-white/10 flex items-center justify-center relative overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.5)]"
           >
-            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 7V5a2 2 0 0 1 2-2h2" />
               <path d="M17 3h2a2 2 0 0 1 2 2v2" />
               <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
               <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-              <line x1="7" y1="12" x2="17" y2="12" />
+              <rect x="7" y="7" width="10" height="10" rx="1" />
             </svg>
 
             {/* Scan Line Animation */}

@@ -3,16 +3,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ChevronRight, Cloud, Lock, Cpu, Moon, AppWindow, LogOut, Crown, Zap } from 'lucide-react';
 import { AppView } from '../types';
+import { ICON_COLORS, updateAppMeta, SHAPES_LIST } from '../lib/icons';
 
 interface SettingsProps {
   onNavigate: (view: AppView) => void;
 }
 
 export default function Settings({ onNavigate }: SettingsProps) {
+  const [selectedColor, setSelectedColor] = useState(localStorage.getItem('zenScanIconColor') || 'blue');
+  const [selectedShape, setSelectedShape] = useState(localStorage.getItem('zenScanIconShape') || 'circle');
+
+  const handleIconChange = (color: string, shape: string) => {
+    setSelectedColor(color);
+    setSelectedShape(shape);
+    updateAppMeta(color, shape);
+  };
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.98 }}
@@ -63,12 +72,57 @@ export default function Settings({ onNavigate }: SettingsProps) {
 
         <SettingsGroup title="Appearance">
           <SettingsItem icon={Moon} label="Dark Mode" detail="Always active" />
-          <SettingsItem icon={AppWindow} label="App Icon" detail="Premium" />
+          <div className="p-6 space-y-6">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-ai-blue/10 flex items-center justify-center text-ai-blue">
+                <AppWindow className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-white tracking-tight">App Icon Customization</p>
+                <p className="text-[10px] text-ai-blue-light font-black uppercase tracking-widest leading-none">400 combinations • Premium</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] ml-1">Palette de couleurs</p>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 px-1">
+                   {Object.keys(ICON_COLORS).map(c => (
+                     <button 
+                       key={c}
+                       onClick={() => handleIconChange(c, selectedShape)}
+                       className={`w-8 h-8 rounded-full shrink-0 border-2 transition-all ${selectedColor === c ? 'border-white scale-110 shadow-lg' : 'border-transparent'}`}
+                       style={{ backgroundColor: ICON_COLORS[c] }}
+                     />
+                   ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] ml-1">Géométrie & Forme</p>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 px-1">
+                   {SHAPES_LIST.map(s => (
+                     <button 
+                       key={s}
+                       onClick={() => handleIconChange(selectedColor, s)}
+                       className={`w-10 h-10 rounded-xl shrink-0 border transition-all flex items-center justify-center bg-white/5 ${selectedShape === s ? 'border-ai-blue bg-ai-blue/20' : 'border-white/5'}`}
+                     >
+                       <img 
+                         src={`/api/icon?color=${selectedColor}&shape=${s}&size=64`} 
+                         className="w-7 h-7"
+                         alt={s}
+                       />
+                     </button>
+                   ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </SettingsGroup>
       </div>
 
       <div className="pt-4 flex flex-col items-center space-y-4">
-        <button className="w-full h-14 glass-card rounded-2xl flex items-center justify-center gap-3 text-error border-error/20 hover:bg-error/10 transition-colors">
+        <button className="w-full h-14 glass-card rounded-2xl flex items-center justify-center gap-3 text-red-500 border-red-500/20 hover:bg-red-500/10 transition-colors">
           <LogOut className="w-5 h-5" />
           <span className="font-bold">Log Out</span>
         </button>
