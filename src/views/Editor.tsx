@@ -8,9 +8,199 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Crop, RotateCw, Filter, FileText, Check, Save, 
   Download, MoreHorizontal, PenTool, Sparkles, 
-  FileSearch, Languages, X, Plus, Trash2, ChevronLeft, ChevronRight 
+  FileSearch, Languages, X, Plus, Trash2, ChevronLeft, ChevronRight,
+  Share2, Mail, Copy, CheckCircle2, FileDown
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 import { AppView, DocumentMetadata } from '../types';
+import { storageService } from '../services/storageService';
+
+interface ExportModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  document: DocumentMetadata | null;
+  pagesCount: number;
+}
+
+function ExportModal({ isOpen, onClose, document, pagesCount }: ExportModalProps) {
+  const [copied, setCopied] = React.useState(false);
+  const [fileName, setFileName] = React.useState(document?.name || 'ZenScan_Export');
+  const [isGenerating, setIsGenerating] = React.useState(false);
+
+  const handleDownloadPDF = async () => {
+    setIsGenerating(true);
+    try {
+      const doc = new jsPDF();
+      doc.setFontSize(22);
+      doc.text("ZENSCAN DOCUMENT", 20, 20);
+      doc.setFontSize(10);
+      doc.text(`Date: ${new Date().toLocaleString()}`, 20, 30);
+      doc.text(`Filename: ${fileName}`, 20, 35);
+      
+      doc.setDrawColor(79, 124, 255);
+      doc.line(20, 40, 190, 40);
+      
+      doc.setFontSize(12);
+      doc.text(`Contenu du document "${document?.name}" exporté via ZenScan Intelligence.`, 20, 50);
+      
+      if (document?.contentSnippet) {
+        doc.setFontSize(10);
+        doc.text("Aperçu de l'extraction :", 20, 70);
+        const splitText = doc.splitTextToSize(document.contentSnippet, 170);
+        doc.text(splitText, 20, 80);
+      }
+      
+      // Simulating some content structure
+      doc.setFontSize(10);
+      doc.setTextColor(150);
+      doc.text("ZenScan AI Extraction - Confidential", 20, 280);
+
+      doc.save(`${fileName}.pdf`);
+    } catch (err) {
+      console.error('PDF Generation failed', err);
+    } finally {
+      setIsGenerating(false);
+      onClose();
+    }
+  };
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: document?.name || 'Document ZenScan',
+          text: `Document ZenScan: ${document?.name}`,
+          url: window.location.href,
+        });
+      } catch (err) {
+        console.error('Share failed', err);
+      }
+    } else {
+      handleCopy();
+    }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleEmail = () => {
+    const docName = document?.name || "Sans titre";
+    const subject = encodeURIComponent(`Partage de Document : ${docName}`);
+    const docLink = window.location.origin + window.location.pathname + (document?.id ? `#doc=${document.id}` : "");
+    
+    const body = encodeURIComponent(
+      `Bonjour,\n\n` +
+      `Je souhaite partager avec vous le document suivant, numérisé et analysé avec l'intelligence artificielle ZenScan.\n\n` +
+      `📌 INFORMATIONS DU DOCUMENT\n` +
+      `-------------------------------------------\n` +
+      `• Nom : ${docName}\n` +
+      `• Date : ${document?.createdAt ? new Date(document.createdAt).toLocaleDateString() : new Date().toLocaleDateString()}\n` +
+      `• Type : ${document?.type || 'Image'}\n` +
+      `• Catégorie : ${document?.category || 'Non classé'}\n` +
+      `• Pages : ${pagesCount}\n` +
+      `${document?.tags && document.tags.length > 0 ? `• Tags : ${document.tags.join(', ')}\n` : ''}` +
+      `${document?.contentSnippet ? `\n🔍 ANALYSE DE L'IA (EXTRAIT) :\n"${document.contentSnippet.slice(0, 300)}..."\n` : ''}` +
+      `\n🔗 ACCÈS AU DOCUMENT :\n${docLink}\n\n` +
+      `-------------------------------------------\n` +
+      `Généré avec ZenScan Intelligence - La gestion documentaire nouvelle génération.`
+    );
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="absolute inset-0 bg-black/80 backdrop-blur-md"
+          />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="relative w-full max-w-sm bg-[#0C0C0E] border border-white/10 rounded-[40px] overflow-hidden shadow-2xl"
+          >
+            <div className="p-8 md:p-10 text-center space-y-8">
+              <div className="w-20 h-20 bg-ai-blue/10 rounded-3xl mx-auto flex items-center justify-center border border-ai-blue/20">
+                <FileDown className="w-10 h-10 text-ai-blue" />
+              </div>
+              
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black text-text-main tracking-tight">Exporter le Document</h3>
+                <p className="text-zinc-500 text-sm font-medium">Nommez votre fichier et choisissez le format.</p>
+              </div>
+
+              <div className="space-y-2 text-left">
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest ml-1">Nom du fichier</label>
+                <input 
+                  type="text"
+                  value={fileName}
+                  onChange={(e) => setFileName(e.target.value)}
+                  autoFocus
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-text-main font-bold outline-none focus:border-ai-blue/50 transition-colors"
+                  placeholder="Ex: Facture_Mai_2026"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <button 
+                  onClick={handleDownloadPDF}
+                  disabled={isGenerating}
+                  className="w-full h-16 bg-ai-gradient text-accent-text font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-3 ai-glow active:scale-95 transition-transform disabled:opacity-50"
+                >
+                  {isGenerating ? (
+                    <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
+                      <RotateCw className="w-5 h-5" />
+                    </motion.div>
+                  ) : <FileDown className="w-5 h-5" />}
+                  {isGenerating ? 'Génération...' : 'Télécharger PDF'}
+                </button>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <button 
+                    onClick={handleShare}
+                    className="flex flex-col items-center justify-center p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-ai-blue/30 transition-all group"
+                  >
+                    <Share2 className="w-5 h-5 text-zinc-500 group-hover:text-ai-blue mb-1" />
+                    <span className="text-[8px] font-black text-zinc-500 uppercase tracking-tighter">Partager</span>
+                  </button>
+                  <button 
+                    onClick={handleEmail}
+                    className="flex flex-col items-center justify-center p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-ai-blue/30 transition-all group"
+                  >
+                    <Mail className="w-5 h-5 text-zinc-500 group-hover:text-ai-blue mb-1" />
+                    <span className="text-[8px] font-black text-zinc-500 uppercase tracking-tighter">Email</span>
+                  </button>
+                  <button 
+                    onClick={handleCopy}
+                    className="flex flex-col items-center justify-center p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-ai-blue/30 transition-all group focus:border-ai-blue/50"
+                  >
+                    {copied ? <CheckCircle2 className="w-5 h-5 text-ai-blue mb-1" /> : <Copy className="w-5 h-5 text-zinc-500 group-hover:text-ai-blue mb-1" />}
+                    <span className="text-[8px] font-black text-zinc-500 uppercase tracking-tighter">{copied ? 'Copié' : 'Lien'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <button 
+                onClick={onClose}
+                className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.3em] hover:text-white transition-colors pt-4"
+              >
+                Fermer
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 interface EditorProps {
   onNavigate: (view: AppView) => void;
@@ -18,13 +208,90 @@ interface EditorProps {
 }
 
 export default function Editor({ onNavigate, document }: EditorProps) {
+  const [docName, setDocName] = useState(document?.name || "Sans titre");
   const [activeFilter, setActiveFilter] = useState('Original');
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [signed, setSigned] = useState(false);
+  const [signatureData, setSignatureData] = useState<string | null>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    setIsDrawing(true);
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#4F7CFF';
+
+    const rect = canvas.getBoundingClientRect();
+    const x = ('touches' in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+    const y = ('touches' in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = ('touches' in e) ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
+    const y = ('touches' in e) ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setSignatureData(null);
+    setSigned(false);
+  };
+
+  const applySignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL();
+    setSignatureData(dataUrl);
+    setSigned(true);
+    setActiveTool(null);
+  };
   const [pages, setPages] = useState<number[]>([1, 2, 3]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [isExporting, setIsExporting] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   
+  const handleRenameScan = (newValue: string) => {
+    const updatedName = docName.replace(/scan/gi, newValue);
+    setDocName(updatedName);
+    if (document) {
+      document.name = updatedName;
+      // Also update tags if they contain "Scan"
+      const updatedTags = document.tags?.map(tag => tag.toLowerCase() === 'scan' ? newValue : tag) || [];
+      document.tags = updatedTags;
+      
+      // Persist the change immediately
+      storageService.updateDocument(document.id, { 
+        name: updatedName,
+        tags: updatedTags 
+      }).catch(err => console.error("Update failed:", err));
+    }
+  };
   const filters = [
     { name: 'Original', icon: FileText },
     { name: 'HD Scan', icon: Save },
@@ -46,14 +313,6 @@ export default function Editor({ onNavigate, document }: EditorProps) {
     }
   };
 
-  const handleExport = () => {
-    setIsExporting(true);
-    setTimeout(() => {
-      setIsExporting(false);
-      onNavigate('LIBRARY');
-    }, 2000);
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -64,9 +323,14 @@ export default function Editor({ onNavigate, document }: EditorProps) {
       {/* Editor Toolbar */}
       <div className="sticky top-20 z-40 bg-primary-900/60 backdrop-blur-xl border-b border-white/5 -mx-5 md:-mx-6 px-5 md:px-6 py-3 md:py-4 mb-6 md:mb-8">
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-          <ToolbarButton icon={Crop} label="Crop" />
-          <ToolbarButton icon={RotateCw} label="Rotate" />
-          <ToolbarButton icon={Filter} label="Filters" active />
+          <ToolbarButton icon={Crop} label="Crop" onClick={() => alert('Outil de recadrage activé')} />
+          <ToolbarButton icon={RotateCw} label="Rotate" onClick={() => alert('Image pivotée de 90°')} />
+          <ToolbarButton 
+            icon={Filter} 
+            label="Filters" 
+            active={activeTool === 'FILTERS'} 
+            onClick={() => setActiveTool(activeTool === 'FILTERS' ? null : 'FILTERS')} 
+          />
           <ToolbarButton 
             icon={PenTool} 
             label="Sign" 
@@ -75,17 +339,47 @@ export default function Editor({ onNavigate, document }: EditorProps) {
           />
           <div className="ml-auto flex gap-2">
             <button 
-              onClick={handleExport}
-              disabled={isExporting}
-              className={`px-4 md:px-8 py-2 md:py-2.5 bg-ai-blue text-white rounded-full font-bold text-[10px] md:text-sm ai-glow active:scale-95 transition-all flex items-center gap-2 ${isExporting ? 'opacity-50' : ''}`}
+              onClick={() => setIsExportModalOpen(true)}
+              className="px-3 md:px-4 py-2 md:py-2.5 bg-white/5 text-zinc-400 hover:text-white rounded-full border border-white/5 hover:border-ai-blue/30 transition-all flex items-center gap-2"
+              title="Partager"
             >
-              {isExporting ? (
-                <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>
-                  <RotateCw className="w-4 h-4" />
-                </motion.div>
-              ) : <Download className="w-3.5 h-3.5 md:w-4 md:h-4" />}
-              <span className="hidden xs:inline">{isExporting ? 'Exporting...' : 'Export PDF'}</span>
-              <span className="xs:hidden">{isExporting ? '...' : 'PDF'}</span>
+              <Share2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+            </button>
+            <button 
+              onClick={() => {
+                const docName = document?.name || "Sans titre";
+                const subject = encodeURIComponent(`Partage de Document : ${docName}`);
+                const docLink = window.location.origin + window.location.pathname + (document?.id ? `#doc=${document.id}` : "");
+                const body = encodeURIComponent(
+                  `Bonjour,\n\n` +
+                  `Je souhaite partager avec vous le document suivant, numérisé et analysé avec l'intelligence artificielle ZenScan.\n\n` +
+                  `📌 INFORMATIONS DU DOCUMENT\n` +
+                  `-------------------------------------------\n` +
+                  `• Nom : ${docName}\n` +
+                  `• Date : ${document?.createdAt ? new Date(document.createdAt).toLocaleDateString() : new Date().toLocaleDateString()}\n` +
+                  `• Type : ${document?.type || 'Image'}\n` +
+                  `• Catégorie : ${document?.category || 'Non classé'}\n` +
+                  `• Pages : ${pages.length}\n` +
+                  `${document?.tags && document.tags.length > 0 ? `• Tags : ${document.tags.join(', ')}\n` : ''}` +
+                  `${document?.contentSnippet ? `\n🔍 ANALYSE DE L'IA (EXTRAIT) :\n"${document.contentSnippet.slice(0, 300)}..."\n` : ''}` +
+                  `\n🔗 ACCÈS AU DOCUMENT :\n${docLink}\n\n` +
+                  `-------------------------------------------\n` +
+                  `Généré avec ZenScan Intelligence - La gestion documentaire nouvelle génération.`
+                );
+                window.location.href = `mailto:?subject=${subject}&body=${body}`;
+              }}
+              className="px-3 md:px-4 py-2 md:py-2.5 bg-white/5 text-zinc-400 hover:text-white rounded-full border border-white/5 hover:border-ai-blue/30 transition-all flex items-center gap-2"
+              title="Email"
+            >
+              <Mail className="w-3.5 h-3.5 md:w-4 md:h-4" />
+            </button>
+            <button 
+              onClick={() => setIsExportModalOpen(true)}
+              className={`px-4 md:px-8 py-2 md:py-2.5 bg-ai-blue text-accent-text rounded-full font-bold text-[10px] md:text-sm ai-glow active:scale-95 transition-all flex items-center gap-2`}
+            >
+              <Download className="w-3.5 h-3.5 md:w-4 md:h-4" />
+              <span className="hidden xs:inline">Export PDF</span>
+              <span className="xs:hidden">PDF</span>
             </button>
           </div>
         </div>
@@ -125,70 +419,101 @@ export default function Editor({ onNavigate, document }: EditorProps) {
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="bg-white w-full max-w-[320px] md:max-w-[420px] aspect-[1/1.41] shadow-[0_40px_70px_rgba(0,0,0,0.4)] rounded-sm overflow-hidden relative"
             >
-              <div className="p-6 md:p-10 space-y-4 md:space-y-6 opacity-80 select-none">
-                <div className="flex justify-between items-start">
-                   <div className="h-6 md:h-8 w-1/3 bg-gray-200 rounded"></div>
-                   <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-ai-blue/5 border border-ai-blue/10 flex items-center justify-center text-[9px] md:text-[10px] font-bold text-ai-blue">
-                     #{pages[currentPageIndex]}
-                   </div>
-                </div>
-                <div className="space-y-2 md:space-y-3">
-                  <div className="h-1.5 md:h-2 w-full bg-gray-100 rounded-full"></div>
-                  <div className="h-1.5 md:h-2 w-full bg-gray-100 rounded-full"></div>
-                  <div className="h-1.5 md:h-2 w-4/5 bg-gray-100 rounded-full"></div>
-                  <div className="h-1.5 md:h-2 w-full bg-gray-100 rounded-full"></div>
-                </div>
-                
-                {currentPageIndex === 0 && (
-                  <div className="pt-10 md:pt-16 space-y-3 md:space-y-4">
-                     <div className="h-24 md:h-32 w-full bg-zinc-50 rounded-xl border-2 border-zinc-100 border-dashed flex items-center justify-center relative">
-                       {signed ? (
-                         <motion.div initial={{ scale: 0, rotate: -5 }} animate={{ scale: 1, rotate: -2 }} className="absolute">
-                           <svg width="140" height="50" viewBox="0 0 120 40" className="text-ai-blue drop-shadow-sm md:w-[180px] md:h-[60px]">
-                             <path d="M10 30 Q30 10 50 25 T90 15" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-                           </svg>
-                         </motion.div>
-                       ) : (
-                         <div className="text-center">
-                           <PenTool className="w-5 h-5 md:w-6 md:h-6 text-zinc-300 mx-auto mb-1.5 md:mb-2" />
-                           <span className="text-[9px] md:text-[10px] text-zinc-300 font-black uppercase tracking-widest leading-none">Sign required</span>
-                         </div>
-                       )}
+              {document?.url ? (
+                <img 
+                  src={document.url} 
+                  alt="Scanned Document" 
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    console.error("Editor Image loading error");
+                    (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1586769852044-692d6e3703f0?q=80&w=800&auto=format&fit=crop";
+                  }}
+                />
+              ) : (
+                <div className="p-6 md:p-10 space-y-4 md:space-y-6 opacity-80 select-none bg-zinc-50 h-full">
+                  <div className="flex justify-between items-start">
+                     <div className="h-6 md:h-8 w-1/3 bg-gray-200 rounded"></div>
+                     <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-ai-blue/5 border border-ai-blue/10 flex items-center justify-center text-[9px] md:text-[10px] font-bold text-ai-blue">
+                       #{pages[currentPageIndex]}
                      </div>
                   </div>
-                )}
-
-                {currentPageIndex > 0 && (
-                  <div className="pt-2 md:pt-4 grid grid-cols-2 gap-3 md:gap-4">
-                     <div className="h-16 md:h-20 bg-zinc-50 rounded-lg"></div>
-                     <div className="h-16 md:h-20 bg-zinc-50 rounded-lg"></div>
-                     <div className="h-16 md:h-20 bg-zinc-50 rounded-lg"></div>
-                     <div className="h-16 md:h-20 bg-zinc-50 rounded-lg"></div>
+                  <div className="space-y-2 md:space-y-3">
+                    <div className="h-1.5 md:h-2 w-full bg-gray-100 rounded-full"></div>
+                    <div className="h-1.5 md:h-2 w-full bg-gray-100 rounded-full"></div>
+                    <div className="h-1.5 md:h-2 w-4/5 bg-gray-100 rounded-full"></div>
+                    <div className="h-1.5 md:h-2 w-full bg-gray-100 rounded-full"></div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+              
+              {currentPageIndex === 0 && signatureData && (
+                <motion.div 
+                  initial={{ scale: 0, rotate: -5 }} 
+                  animate={{ scale: 1, rotate: -2 }} 
+                  className="absolute bottom-20 left-1/2 -translate-x-1/2 cursor-move"
+                  drag
+                  dragConstraints={{ left: -150, right: 150, top: -200, bottom: 50 }}
+                >
+                  <img src={signatureData} alt="Signature" className="w-32 md:w-48 h-auto drop-shadow-sm pointer-events-none" />
+                </motion.div>
+              )}
+
               <div className="absolute inset-0 border-[1px] border-black/5 pointer-events-none"></div>
             </motion.div>
 
-            {/* Signature Pad Floating */}
             <AnimatePresence>
               {activeTool === 'SIGN' && (
                 <motion.div 
                   initial={{ opacity: 0, y: 50, scale: 0.9 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 50, scale: 0.9 }}
-                  className="absolute bottom-10 inset-x-10 glass-card p-6 rounded-[32px] border border-ai-blue/30 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 text-center"
+                  className="absolute bottom-10 inset-x-4 md:inset-x-10 glass-card p-6 rounded-[32px] border border-ai-blue/30 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 text-center"
                 >
-                  <div className="flex justify-between items-center mb-6">
-                    <span className="text-xs font-bold text-white uppercase tracking-widest">Signature Digitale</span>
-                    <button onClick={() => setActiveTool(null)} className="text-gray-500 hover:text-white"><X className="w-4 h-4" /></button>
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
+                       <PenTool className="w-4 h-4 text-ai-blue" /> Signature Digitale
+                    </span>
+                    <button onClick={() => setActiveTool(null)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+                      <X className="w-4 h-4 text-gray-500" />
+                    </button>
                   </div>
-                  <div className="h-32 bg-primary-900/50 rounded-2xl border border-white/5 flex items-center justify-center cursor-crosshair group">
-                     <span className="text-xs text-gray-600 font-bold uppercase tracking-widest group-hover:opacity-0 transition-opacity">Tracez votre signature</span>
+                  
+                  <div className="relative h-40 bg-[#0C0C0E] rounded-2xl border border-white/10 overflow-hidden shadow-inner cursor-crosshair">
+                    <canvas 
+                      ref={canvasRef}
+                      width={400}
+                      height={160}
+                      onMouseDown={startDrawing}
+                      onMouseMove={draw}
+                      onMouseUp={stopDrawing}
+                      onMouseLeave={stopDrawing}
+                      onTouchStart={startDrawing}
+                      onTouchMove={draw}
+                      onTouchEnd={stopDrawing}
+                      className="w-full h-full touch-none"
+                    />
+                    {!isDrawing && !signatureData && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-20">
+                        <PenTool className="w-8 h-8 mb-2" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">Dessinez ici</span>
+                      </div>
+                    )}
                   </div>
+                  
                   <div className="grid grid-cols-2 gap-3 mt-6">
-                    <button className="h-12 bg-white/5 text-gray-500 font-bold rounded-xl text-xs uppercase hover:bg-white/10" onClick={() => setSigned(false)}>Reset</button>
-                    <button className="h-12 bg-ai-gradient text-white font-bold rounded-xl text-xs uppercase ai-glow" onClick={() => { setSigned(true); setActiveTool(null); }}>Apply</button>
+                    <button 
+                      className="h-14 bg-white/5 text-gray-400 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:bg-white/10 transition-colors" 
+                      onClick={clearSignature}
+                    >
+                      Effacer
+                    </button>
+                    <button 
+                      className="h-14 bg-ai-gradient text-accent-text font-black rounded-2xl text-[10px] uppercase tracking-widest ai-glow transition-transform active:scale-95" 
+                      onClick={applySignature}
+                    >
+                      Appliquer
+                    </button>
                   </div>
                 </motion.div>
               )}
@@ -219,12 +544,16 @@ export default function Editor({ onNavigate, document }: EditorProps) {
                         onClick={() => setCurrentPageIndex(idx)}
                         className={`relative w-24 aspect-[1/1.41] rounded-lg overflow-hidden transition-all border-2 ${currentPageIndex === idx ? 'border-ai-blue ai-glow scale-105 shadow-xl' : 'border-white/5 hover:border-white/20'}`}
                       >
-                         <div className="absolute inset-0 bg-white p-2 flex flex-col gap-1.5 opacity-40">
-                           <div className="h-1.5 w-1/2 bg-gray-200 rounded-full" />
-                           <div className="h-1 w-full bg-gray-100 rounded-full" />
-                           <div className="h-1 w-full bg-gray-100 rounded-full" />
-                           <div className="h-1 w-4/5 bg-gray-100 rounded-full" />
-                         </div>
+                         {idx === 0 && document?.url ? (
+                           <img src={document.url} className="w-full h-full object-cover opacity-60" alt="" referrerPolicy="no-referrer" />
+                         ) : (
+                           <div className="absolute inset-0 bg-white p-2 flex flex-col gap-1.5 opacity-40">
+                             <div className="h-1.5 w-1/2 bg-gray-200 rounded-full" />
+                             <div className="h-1 w-full bg-gray-100 rounded-full" />
+                             <div className="h-1 w-full bg-gray-100 rounded-full" />
+                             <div className="h-1 w-4/5 bg-gray-100 rounded-full" />
+                           </div>
+                         )}
                          <div className="absolute top-1 right-1 w-4 h-4 bg-ai-blue rounded-full flex items-center justify-center text-[8px] font-bold text-white">
                            {idx + 1}
                          </div>
@@ -278,19 +607,85 @@ export default function Editor({ onNavigate, document }: EditorProps) {
                 <Sparkles className="w-4 h-4" /> AI Intelligence
              </h3>
              <div className="grid grid-cols-2 gap-3">
-                <QuickAction icon={Sparkles} label="Résumé" />
-                <QuickAction icon={Languages} label="Traduit" />
-                <QuickAction icon={FileSearch} label="Analyse" />
-                <QuickAction icon={PenTool} label="Signe" />
+                <QuickAction icon={Sparkles} label="Résumé" onClick={() => alert('Génération d\'un résumé par Zen AI...')} />
+                <QuickAction icon={Languages} label="Traduit" onClick={() => alert('Traduction intelligente en cours...')} />
+                <QuickAction icon={FileSearch} label="Analyse" onClick={() => alert('Analyse sémantique approfondie...')} />
+                <QuickAction icon={PenTool} label="Signe" onClick={() => setActiveTool('SIGN')} />
              </div>
           </div>
 
           <div className="glass-card rounded-[32px] p-8 border border-white/10 bg-gradient-to-b from-white/[0.05] to-transparent">
-             <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+             <h3 className="text-xl font-bold text-text-main mb-6 flex items-center gap-2">
                 <Save className="w-5 h-5 text-ai-blue" /> Document Metadata
              </h3>
              <div className="space-y-4">
-                <MetaItem label="Nom du fichier" value={document?.name || "Sans titre"} />
+                <div className="space-y-3 pb-3 border-b border-white/5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-500 font-medium">Nom du fichier</span>
+                    <input 
+                      type="text"
+                      value={docName}
+                      onChange={(e) => {
+                        setDocName(e.target.value);
+                        if (document) document.name = e.target.value;
+                      }}
+                      className="text-xs font-bold text-text-main bg-transparent border-none outline-none text-right max-w-[200px] focus:text-ai-blue transition-colors"
+                    />
+                  </div>
+                  
+                  {docName.toLowerCase().includes('scan') && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="flex flex-col gap-3 pt-3 mt-3 border-t border-white/5"
+                    >
+                      <p className="text-[10px] font-black text-ai-blue uppercase tracking-widest flex items-center gap-2">
+                        <Sparkles className="w-3 h-3" /> Assistant de Renommage
+                      </p>
+                      
+                      <div className="flex flex-wrap gap-1.5">
+                        {['Document', 'Capture', 'Fichier', 'Archive', 'Audit'].map(word => (
+                          <button 
+                            key={word}
+                            onClick={() => handleRenameScan(word)}
+                            className="px-2.5 py-1.5 bg-ai-blue/10 border border-ai-blue/30 rounded-xl text-[9px] font-bold text-ai-blue hover:bg-ai-blue/20 transition-all"
+                          >
+                            {word}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="relative group">
+                        <input 
+                          type="text"
+                          placeholder="Remplacer 'Scan' par..."
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-text-main outline-none focus:border-ai-blue/50 transition-all pr-10"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleRenameScan((e.target as HTMLInputElement).value);
+                              (e.target as HTMLInputElement).value = "";
+                            }
+                          }}
+                        />
+                        <button 
+                          onClick={(e) => {
+                            const input = (e.currentTarget.previousSibling as HTMLInputElement);
+                            if (input.value) {
+                              handleRenameScan(input.value);
+                              input.value = "";
+                            }
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-ai-blue transition-colors"
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                      </div>
+                      
+                      <p className="text-[8px] text-zinc-600 italic">Cela remplacera toute occurrence de "Scan" dans le titre et les tags.</p>
+                    </motion.div>
+                  )}
+                </div>
+                
                 <MetaItem label="Créé le" value={document?.createdAt ? new Date(document.createdAt).toLocaleDateString() : 'N/A'} />
                 <MetaItem label="Pages" value={document ? `${pages.length} Pages` : 'N/A'} />
                 <MetaItem label="Taille" value={document?.size || 'N/A'} />
@@ -299,18 +694,38 @@ export default function Editor({ onNavigate, document }: EditorProps) {
              
              <div className="pt-10 flex flex-col gap-3">
                 <button 
-                   onClick={() => onNavigate('LIBRARY')}
-                   className="w-full h-14 bg-ai-gradient text-white font-bold rounded-2xl flex items-center justify-center gap-2 ai-glow active:scale-95 transition-transform"
+                   onClick={async () => {
+                     if (document) {
+                       try {
+                         await storageService.saveDocument(document);
+                         alert('Document sauvegardé dans les archives');
+                       } catch (err) {
+                         console.error(err);
+                       }
+                     }
+                     onNavigate('LIBRARY');
+                   }}
+                   className="w-full h-14 bg-ai-gradient text-accent-text font-bold rounded-2xl flex items-center justify-center gap-2 ai-glow active:scale-95 transition-transform"
                 >
                   Save to Archive
                 </button>
-                <button className="w-full h-14 bg-primary-800 text-gray-300 font-bold rounded-2xl border border-white/5 hover:bg-primary-700 transition-colors">
-                  Share Document
+                <button 
+                  onClick={() => setIsExportModalOpen(true)}
+                  className="w-full h-14 bg-primary-800 text-gray-300 font-bold rounded-2xl border border-white/5 hover:bg-primary-700 transition-colors"
+                >
+                   Share & Export
                 </button>
              </div>
           </div>
         </div>
       </div>
+
+      <ExportModal 
+        isOpen={isExportModalOpen} 
+        onClose={() => setIsExportModalOpen(false)} 
+        document={document}
+        pagesCount={pages.length}
+      />
     </motion.div>
   );
 }
@@ -327,9 +742,12 @@ function ToolbarButton({ icon: Icon, label, active, onClick }: { icon: any, labe
   );
 }
 
-function QuickAction({ icon: Icon, label }: { icon: any, label: string }) {
+function QuickAction({ icon: Icon, label, onClick }: { icon: any, label: string, onClick?: () => void }) {
   return (
-    <button className="flex flex-col items-center justify-center p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-ai-blue/30 transition-all group active:scale-95">
+    <button 
+      onClick={onClick}
+      className="flex flex-col items-center justify-center p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-ai-blue/30 transition-all group active:scale-95"
+    >
       <Icon className="w-5 h-5 text-gray-500 group-hover:text-ai-blue transition-colors mb-2" />
       <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-white">{label}</span>
     </button>
@@ -340,7 +758,7 @@ function MetaItem({ label, value }: { label: string, value: string }) {
   return (
     <div className="flex justify-between items-center py-3 border-b border-white/5 last:border-0">
       <span className="text-xs text-gray-500 font-medium">{label}</span>
-      <span className="text-xs font-bold text-white truncate max-w-[150px]">{value}</span>
+      <span className="text-xs font-bold text-text-main truncate max-w-[150px]">{value}</span>
     </div>
   );
 }

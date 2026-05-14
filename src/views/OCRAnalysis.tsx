@@ -3,14 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Database, Tag, Lightbulb, ArrowRight, Activity, Cpu, Binary, Layers, Search, ShieldCheck, Box, Loader2 } from 'lucide-react';
+import { CheckCircle2, Database, Tag, Lightbulb, ArrowRight, Activity, Cpu, Binary, Layers, Search, ShieldCheck, Box, Loader2, Mail, Share2, FileText } from 'lucide-react';
 import { AppView, DocumentMetadata } from '../types';
 import { GlassCard, AIOrb } from '../components/PremiumComponents';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
+import { storageService } from '../services/storageService';
 
 interface OCRAnalysisProps {
   onNavigate: (view: AppView) => void;
@@ -19,14 +18,92 @@ interface OCRAnalysisProps {
   scannedImage?: string | null;
 }
 
+// Memoized components for better performance
+const FeaturePoint = React.memo(({ pt, progress }: { pt: any, progress: number }) => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ 
+      opacity: progress > pt.x ? [0, 0.6, 0.1] : 0,
+      backgroundColor: progress > pt.x ? ['#4F7CFF', '#fff', '#4F7CFF'] : '#4F7CFF'
+    }}
+    className="absolute w-1 h-1 rounded-full"
+    style={{ left: `${pt.x}%`, top: `${pt.y}%` }}
+  />
+));
+
+const SemanticItem = React.memo(({ item, isDiscovered, onUpdate }: { item: any, isDiscovered: boolean, onUpdate: (id: string, value: string) => void }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(item.value);
+
+  const handleBlur = () => {
+    setIsEditing(false);
+    onUpdate(item.id, editValue);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleBlur();
+    if (e.key === 'Escape') {
+      setEditValue(item.value);
+      setIsEditing(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      {isDiscovered && (
+        <motion.div 
+          initial={{ opacity: 0, x: -10 }} 
+          animate={{ opacity: 1, x: 0 }}
+          className="flex flex-col gap-0.5 p-2.5 md:p-3.5 bg-white/[0.02] border border-white/5 rounded-xl md:rounded-2xl group hover:border-ai-blue/40 transition-all cursor-pointer"
+          onClick={() => !isEditing && setIsEditing(true)}
+        >
+          <div className="flex justify-between items-center opacity-40 group-hover:opacity-100 transition-opacity">
+            <span className="text-[7px] md:text-[8px] font-black tracking-[0.2em]">{item.label}</span>
+            <span className="text-[6px] md:text-[7px] font-mono text-ai-blue">Σ_{item.conf}</span>
+          </div>
+          
+          {isEditing ? (
+            <input
+              autoFocus
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
+              className="bg-transparent border-none p-0 text-xs md:text-sm font-black tracking-tight text-ai-blue outline-none w-full"
+            />
+          ) : (
+            <span className={`text-xs md:text-sm font-black tracking-tight ${item.premium ? 'text-ai-blue' : 'text-text-main'}`}>
+              {item.value}
+            </span>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+});
+
 export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, scannedImage }: OCRAnalysisProps) {
+  // Keep a local copy of the image to prevent it from disappearing during exit animations
+  const [localImage, setLocalImage] = useState<string | null>(scannedImage || null);
+  
+  useEffect(() => {
+    if (scannedImage) setLocalImage(scannedImage);
+  }, [scannedImage]);
+
   const [progress, setProgress] = useState(0);
   const [discoveredItems, setDiscoveredItems] = useState<string[]>([]);
   const [currentPhase, setCurrentPhase] = useState('Analyse Initialisation');
   const [detectedType, setDetectedType] = useState<string>('ANALYSANTE...');
   const [selectedCategory, setSelectedCategory] = useState<string>('Factures');
+  const [docName, setDocName] = useState(`Scan October 14, 2026`);
+  const [semanticData, setSemanticData] = useState([
+    { id: 'type', label: 'TYPE_DOC', value: 'FACTURE RÉCURRENTE', conf: '1.000' },
+    { id: 'amount', label: 'NET_VALUE', value: '124,50 €', conf: '0.999', premium: true },
+    { id: 'date', label: 'EPOCH_REF', value: '2026-10-14', conf: '1.000' }
+  ]);
   const { user } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const documentCategories = ['Factures', 'Recettes', 'Contrats', 'Identité', 'Personnel', 'Travail', 'Autre'];
   
@@ -57,24 +134,24 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
 
     const interval = setInterval(() => {
       setProgress((prev) => {
-        const next = Math.min(prev + 0.75, 100);
+        const next = Math.min(prev + 1.2, 100);
         
         // Update phase message
         const phase = phases.find(ph => next <= ph.p);
         if (phase && phase.msg !== currentPhase) setCurrentPhase(phase.msg);
 
         // Type Detection flicker at start
-        if (next > 15 && next < 35) {
-          if (Math.random() > 0.8) {
+        if (next > 10 && next < 30) {
+          if (Math.random() > 0.7) {
             setDetectedType(typeCycle[typeIdx % typeCycle.length]);
             typeIdx++;
           }
-        } else if (next >= 35) {
+        } else if (next >= 30) {
           setDetectedType('FACTURE');
         }
 
         // Technical logs
-        if (Math.random() > 0.94 && next < 100) {
+        if (Math.random() > 0.9 && next < 100) {
           const techLogs = [
             'MATRIX_DOT_PROD_99.2',
             'ISO_DENOISE_FILTER',
@@ -111,7 +188,6 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
     setIsSaving(true);
     try {
       const docId = `doc_${Date.now()}`;
-      const docRef = doc(db, 'users', user.uid, 'documents', docId);
       
       // Use the actual scanned image URL if available
       const imageUrl = scannedImage || undefined;
@@ -119,45 +195,43 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
       const docType = scannedImage ? 'JPG' : (isPdf ? 'PDF' : 'JPG');
       const samplePdfUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
 
-      const newDoc = {
+      const newDoc: DocumentMetadata = {
         id: docId,
         userId: user.uid,
-        name: `Scan ${new Date().toLocaleDateString()} (${docType})`,
-        type: docType,
+        name: docName || `Scan ${new Date().toLocaleDateString()} (${docType})`,
+        type: docType as any,
         category: selectedCategory,
         url: scannedImage ? scannedImage : (isPdf ? samplePdfUrl : undefined),
         size: scannedImage ? `${Math.round(scannedImage.length / 1024)} KB` : '1.2 MB',
-        modifiedAt: new Date().toISOString(),
+        modifiedAt: new Date(),
         tags: ['Scan', detectedType, selectedCategory],
         isAiEnhanced: true,
-        contentSnippet: 'FACTURE RÉCURRENTE - NET_VALUE: 124,50 €',
+        contentSnippet: `${semanticData.find(d => d.id === 'type')?.value} - NET_VALUE: ${semanticData.find(d => d.id === 'amount')?.value}`,
         extractedData: {
-          type: detectedType,
-          amount: '124,50 €',
-          date: '2026-05-09'
-        },
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+          type: semanticData.find(d => d.id === 'type')?.value || detectedType,
+          amount: semanticData.find(d => d.id === 'amount')?.value || '124,50 €',
+          date: semanticData.find(d => d.id === 'date')?.value || '2026-05-09'
+        }
       };
 
-      await setDoc(docRef, newDoc);
+      await storageService.saveDocument(newDoc);
+      
       if (onSelectDocument) {
-        onSelectDocument({
-          ...newDoc,
-          createdAt: new Date(), // Local fallback for immediate state
-          modifiedAt: new Date(newDoc.modifiedAt)
-        } as any);
+        onSelectDocument(newDoc);
       }
       onComplete();
     } catch (error) {
       console.error("Error saving document", error);
-      if (error instanceof Error && error.message.includes('permission')) {
-        handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/documents`);
-      }
+      setSaveError("Erreur lors de l'enregistrement. Veuillez réessayer.");
     } finally {
       setIsSaving(false);
     }
   };
+
+  const updateSemanticItem = useCallback((id: string, value: string) => {
+    setSemanticData(prev => prev.map(item => item.id === id ? { ...item, value } : item));
+    if (id === 'type') setDetectedType(value);
+  }, []);
 
   return (
     <motion.div
@@ -184,7 +258,7 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
         >
           Extraction de Haute Précision
         </motion.p>
-        <h2 className="text-lg md:text-4xl font-black text-white tracking-tighter leading-none">Zen Logic Nucleus</h2>
+        <h2 className="text-lg md:text-4xl font-black text-text-main tracking-tighter leading-none">Zen Logic Nucleus</h2>
         
         {/* Category Selector */}
         <div className="flex justify-center mt-6">
@@ -240,20 +314,38 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
             className="relative z-10 w-full max-w-[260px] h-[260px] sm:h-[320px] md:max-w-[280px] md:h-[460px] bg-black/40 border border-white/10 rounded-[32px] md:rounded-[40px] overflow-hidden shadow-2xl backdrop-blur-md"
           >
             <div className="absolute inset-0 z-0 overflow-hidden">
-              {scannedImage ? (
-                <motion.img 
-                  initial={{ opacity: 0, scale: 1.1 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  src={scannedImage} 
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
-                  style={{ 
-                    backgroundImage: 'repeating-linear-gradient(0deg, #fff 0, #fff 1px, transparent 1px, transparent 20px), repeating-linear-gradient(90deg, #fff 0, #fff 1px, transparent 1px, transparent 20px)', 
-                  }} 
-                />
-              )}
+              <AnimatePresence mode="wait">
+                {localImage ? (
+                  <motion.img 
+                    key="scanned-image"
+                    initial={{ opacity: 0, scale: 1.1 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    src={localImage} 
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      console.error("Image loading error");
+                      // Use a neutral document placeholder instead of random unsplash if truly fails
+                      (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1586769852044-692d6e3703f0?q=80&w=800&auto=format&fit=crop";
+                    }}
+                  />
+                ) : (
+                  <motion.div 
+                    key="placeholder"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900"
+                  >
+                    <div className="absolute inset-0 opacity-[0.05] pointer-events-none" 
+                      style={{ 
+                        backgroundImage: 'repeating-linear-gradient(0deg, #fff 0, #fff 1px, transparent 1px, transparent 20px), repeating-linear-gradient(90deg, #fff 0, #fff 1px, transparent 1px, transparent 20px)', 
+                      }} 
+                    />
+                    <FileText className="w-12 h-12 text-zinc-800 mb-2" />
+                    <span className="text-[8px] font-black text-zinc-700 uppercase tracking-widest">Aucune Preview</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Document Recognition Box */}
@@ -261,35 +353,66 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
                {/* Feature Points Interaction */}
                 <div className="absolute inset-0">
                   {featurePoints.map((pt) => (
-                    <motion.div
-                      key={pt.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ 
-                        opacity: progress > pt.x ? [0, 0.6, 0.1] : 0,
-                        backgroundColor: progress > pt.x ? ['#4F7CFF', '#fff', '#4F7CFF'] : '#4F7CFF'
-                      }}
-                      className="absolute w-1 h-1 rounded-full"
-                      style={{ left: `${pt.x}%`, top: `${pt.y}%` }}
-                    />
+                    <FeaturePoint key={pt.id} pt={pt} progress={progress} />
                   ))}
                 </div>
 
-                <div className="relative z-10 p-6 space-y-4 text-center">
-                   <div className="w-12 h-12 rounded-full bg-ai-blue/10 border border-ai-blue/20 flex items-center justify-center mx-auto mb-2">
-                     <Search className={`w-6 h-6 text-ai-blue ${progress < 100 ? 'animate-pulse' : ''}`} />
-                   </div>
-                   <div className="space-y-1">
-                      <p className="text-[7px] font-black text-zinc-500 uppercase tracking-widest">Type Détecté</p>
-                      <motion.h4 
-                        key={detectedType} 
-                        initial={{ opacity: 0, y: 5 }} 
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-lg font-black text-white tracking-tight"
-                      >
-                        {detectedType}
-                      </motion.h4>
-                   </div>
-                </div>
+                {progress >= 100 && (
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="relative z-20 flex flex-col gap-3 w-full"
+                  >
+                    <button 
+                      onClick={() => {
+                        const subject = encodeURIComponent(`Document ZenScan: ${docName}`);
+                        const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le document "${docName}" scanné avec ZenScan.\n\nLien: ${window.location.href}`);
+                        window.location.href = `mailto:?subject=${subject}&body=${body}`;
+                      }}
+                      className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-black text-[10px] uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-white/10 group/mail"
+                    >
+                      <Mail className="w-4 h-4 text-ai-blue group-hover/mail:scale-110 transition-transform" />
+                      Email Document
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (navigator.share) {
+                          navigator.share({
+                            title: docName,
+                            text: `Regardez ce document scanné avec ZenScan: ${docName}`,
+                            url: window.location.href
+                          }).catch(console.error);
+                        } else {
+                          navigator.clipboard.writeText(window.location.href);
+                          alert('Lien de partage copié dans le presse-papier !');
+                        }
+                      }}
+                      className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-black text-[10px] uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-white/10 group/share"
+                    >
+                      <Share2 className="w-4 h-4 text-ai-blue group-hover/share:scale-110 transition-transform" />
+                      Partager PDF
+                    </button>
+                  </motion.div>
+                )}
+                
+                {progress < 100 && (
+                  <div className="relative z-10 p-6 space-y-4 text-center">
+                    <div className="w-12 h-12 rounded-full bg-ai-blue/10 border border-ai-blue/20 flex items-center justify-center mx-auto mb-2">
+                      <Search className={`w-6 h-6 text-ai-blue ${progress < 100 ? 'animate-pulse' : ''}`} />
+                    </div>
+                    <div className="space-y-1">
+                        <p className="text-[7px] font-black text-zinc-500 uppercase tracking-widest">Type Détecté</p>
+                        <motion.h4 
+                          key={detectedType} 
+                          initial={{ opacity: 0, y: 5 }} 
+                          animate={{ opacity: 1, y: 0 }}
+                          className="text-lg font-black text-text-main tracking-tight"
+                        >
+                          {detectedType}
+                        </motion.h4>
+                    </div>
+                  </div>
+                )}
             </div>
 
             {/* HUD Elements */}
@@ -333,6 +456,15 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
 
       {/* Control & Progress Hub */}
       <div className="space-y-3">
+        {saveError && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-black text-center uppercase tracking-widest"
+          >
+            {saveError}
+          </motion.div>
+        )}
         <div className="flex justify-between items-end px-1">
           <div className="space-y-1 flex-1">
             <div className="flex items-center gap-1.5 md:gap-2">
@@ -374,29 +506,27 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
               </div>
             )}
           </div>
+          
+          <div className="mb-4">
+            <p className="text-[7px] md:text-[8px] font-black text-zinc-500 uppercase tracking-widest mb-1">Nom de l'Archive</p>
+            <input 
+              type="text"
+              value={docName}
+              onChange={(e) => setDocName(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs font-black text-text-main outline-none focus:border-ai-blue/40 transition-colors"
+              placeholder="Nommer votre scan..."
+            />
+          </div>
+
           <div className="grid grid-cols-1 gap-2 md:gap-2.5">
-             <AnimatePresence mode="popLayout">
-               {[
-                 { id: 'type', label: 'TYPE_DOC', value: 'FACTURE RÉCURRENTE', conf: '1.000' },
-                 { id: 'amount', label: 'NET_VALUE', value: '124,50 €', conf: '0.999', premium: true },
-                 { id: 'date', label: 'EPOCH_REF', value: '2026-05-09', conf: '1.000' }
-               ].map((item) => (
-                 discoveredItems.includes(item.id) && (
-                   <motion.div 
-                     key={item.id}
-                     initial={{ opacity: 0, x: -10 }} 
-                     animate={{ opacity: 1, x: 0 }}
-                     className="flex flex-col gap-0.5 p-2.5 md:p-3.5 bg-white/[0.02] border border-white/5 rounded-xl md:rounded-2xl group hover:border-ai-blue/40 transition-all"
-                   >
-                     <div className="flex justify-between items-center opacity-40 group-hover:opacity-100 transition-opacity">
-                       <span className="text-[7px] md:text-[8px] font-black tracking-[0.2em]">{item.label}</span>
-                       <span className="text-[6px] md:text-[7px] font-mono text-ai-blue">Σ_{item.conf}</span>
-                     </div>
-                     <span className={`text-xs md:text-sm font-black tracking-tight ${item.premium ? 'text-ai-blue' : 'text-white'}`}>{item.value}</span>
-                   </motion.div>
-                 )
-               ))}
-             </AnimatePresence>
+              {semanticData.map((item) => (
+                <SemanticItem 
+                  key={item.id} 
+                  item={item} 
+                  isDiscovered={discoveredItems.includes(item.id)} 
+                  onUpdate={updateSemanticItem}
+                />
+              ))}
           </div>
         </GlassCard>
 

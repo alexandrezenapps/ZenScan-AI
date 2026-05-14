@@ -15,7 +15,7 @@ export default function Navbar() {
         <div className="relative">
           <div className="absolute inset-0 bg-ai-blue blur-xl opacity-20 group-hover:opacity-40 transition-opacity" />
           <div className="relative w-10 h-10 rounded-[14px] bg-ai-gradient flex items-center justify-center shadow-[0_8px_20px_rgba(79,124,255,0.3)] border border-white/20">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-accent-text" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 7V5a2 2 0 0 1 2-2h2" />
               <path d="M17 3h2a2 2 0 0 1 2 2v2" />
               <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
@@ -25,7 +25,7 @@ export default function Navbar() {
           </div>
         </div>
         <div className="flex flex-col -space-y-1">
-          <span className="text-xl font-black tracking-tighter text-white">ZenScan</span>
+          <span className="text-xl font-black tracking-tighter text-text-main">ZenScan</span>
           <span className="text-[10px] font-black text-ai-blue tracking-[0.3em] uppercase opacity-80">Intelligence</span>
         </div>
       </div>

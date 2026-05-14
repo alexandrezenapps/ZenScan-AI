@@ -3,15 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { FileText, Sparkles, Clock, LayoutGrid, Zap, Bot, BarChart3 } from 'lucide-react';
-import { AppView } from '../types';
-import { RECENT_SCANS, SMART_SUGGESTIONS } from '../constants';
+import { FileText, Sparkles, Clock, LayoutGrid, Zap, Bot, BarChart3, Loader2 } from 'lucide-react';
+import { AppView, DocumentMetadata } from '../types';
+import { SMART_SUGGESTIONS } from '../constants';
 import { GlassCard, AIOrb, ActionChip, PrimaryButton, AIChip } from '../components/PremiumComponents';
 import { useAuth } from '../context/AuthContext';
 import { DURATIONS, EASINGS } from '../lib/animations';
 import { FadeScale } from '../components/animations/FadeScale';
+import { storageService } from '../services/storageService';
 
 interface HomeProps {
   onNavigate: (view: AppView) => void;
@@ -19,7 +20,31 @@ interface HomeProps {
 
 export default function Home({ onNavigate }: HomeProps) {
   const { user } = useAuth();
-  const userName = user?.displayName?.split(' ')[0] || 'Zen App';
+  const [documents, setDocuments] = useState<DocumentMetadata[]>([]);
+  const [loading, setLoading] = useState(true);
+  const userName = user?.displayName?.split(' ')[0] || 'Voyageur';
+
+  useEffect(() => {
+    if (!user) return;
+    
+    const fetchDocs = async () => {
+      setLoading(true);
+      try {
+        const docs = await storageService.getDocuments();
+        setDocuments(docs);
+      } catch (err) {
+        console.error("Home fetch failed:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchDocs();
+  }, [user]);
+
+  const recentScans = documents.slice(0, 5);
+  const invoiceCount = documents.filter(d => d.category === 'Factures').length;
+  const contractCount = documents.filter(d => d.category === 'Contrats').length;
 
   return (
     <motion.div
@@ -43,7 +68,7 @@ export default function Home({ onNavigate }: HomeProps) {
                 <span className="text-[9px] font-black text-ai-blue uppercase tracking-widest">Live Sync</span>
               </div>
             </div>
-            <h1 className="text-4xl md:text-5xl font-extrabold tracking-tighter text-white">
+            <h1 className="text-4xl md:text-5xl font-extrabold tracking-tighter text-text-main">
               Bonjour {userName}
             </h1>
             <p className="text-base md:text-lg text-zinc-500 font-medium tracking-tight">C'est une excellente journée pour numériser.</p>
@@ -59,7 +84,7 @@ export default function Home({ onNavigate }: HomeProps) {
                   <div className="flex items-center gap-4 md:gap-5">
                     <AIOrb size="w-12 h-12 md:w-16 md:h-16" />
                     <div>
-                      <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">Zen Intelligence</h2>
+                      <h2 className="text-xl md:text-2xl font-bold text-text-main tracking-tight">Zen Intelligence</h2>
                       <p className="text-xs md:text-sm text-zinc-500 font-medium leading-none">Auto-organisation active</p>
                     </div>
                   </div>
@@ -73,8 +98,8 @@ export default function Home({ onNavigate }: HomeProps) {
 
                 <div className="grid grid-cols-2 gap-3 md:gap-4">
                   {[
-                    { label: 'Factures', count: 12, color: 'text-ai-blue' },
-                    { label: 'Contrats', count: 4, color: 'text-emerald-400' }
+                    { label: 'Factures', count: invoiceCount, color: 'text-ai-blue' },
+                    { label: 'Contrats', count: contractCount, color: 'text-emerald-400' }
                   ].map(stat => (
                     <div key={stat.label} className="bg-white/5 rounded-2xl p-4 md:p-5 border border-white/5 min-w-[100px] md:min-w-[120px] backdrop-blur-sm">
                       <p className={`text-xl md:text-2xl font-black ${stat.color}`}>{stat.count}</p>
@@ -93,35 +118,67 @@ export default function Home({ onNavigate }: HomeProps) {
             <div className="flex justify-between items-end px-2">
               <div>
                 <p className="text-[9px] md:text-[10px] font-black text-ai-blue uppercase tracking-[0.4em] mb-1 md:mb-2 leading-none">Portfolio</p>
-                <h3 className="text-xl md:text-2xl font-extrabold text-white tracking-tight leading-none">Dernières Captures</h3>
+                <h3 className="text-xl md:text-2xl font-extrabold text-text-main tracking-tight leading-none">Dernières Captures</h3>
               </div>
-              <button className="text-[10px] md:text-xs font-bold text-zinc-500 hover:text-white transition-colors flex items-center gap-2 group">
+              <button 
+                onClick={() => onNavigate('LIBRARY')}
+                className="text-[10px] md:text-xs font-bold text-zinc-500 hover:text-white transition-colors flex items-center gap-2 group"
+              >
                 Explorer tout <LayoutGrid className="w-3 h-3 md:w-4 md:h-4 group-hover:rotate-90 transition-transform" />
               </button>
             </div>
           </FadeScale>
 
           <div className="flex gap-4 md:gap-6 overflow-x-auto no-scrollbar pb-6 -mx-2 px-2">
-            {RECENT_SCANS.map((scan, i) => (
-              <FadeScale key={`gallery-${scan.id}`} delay={300 + (i * 80)}>
-                <div className="flex-shrink-0">
+            {loading ? (
+              <div className="flex items-center justify-center p-12 w-full">
+                <Loader2 className="w-8 h-8 text-ai-blue animate-spin" />
+              </div>
+            ) : recentScans.length === 0 ? (
+              <div className="p-8 border-2 border-dashed border-white/5 rounded-3xl w-full flex flex-col items-center justify-center text-zinc-600 gap-3">
+                <FileText className="w-8 h-8 opacity-20" />
+                <p className="text-[10px] uppercase font-black tracking-widest">Aucun scan récent</p>
+                <button 
+                  onClick={() => onNavigate('SCANNER')}
+                  className="px-6 py-2 bg-ai-blue/10 text-ai-blue rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-ai-blue/20 transition-all"
+                >
+                  Démarrer
+                </button>
+              </div>
+            ) : recentScans.map((scan, i) => (
+              <FadeScale key={`gallery-${scan.id}-${i}`} delay={300 + (i * 80)}>
+                <div 
+                  className="flex-shrink-0 cursor-pointer"
+                  onClick={() => onNavigate('LIBRARY')}
+                >
                   <GlassCard className="w-48 md:w-56 overflow-hidden" hoverScale={false}>
                     <div className="relative aspect-[1/1.4] bg-white p-5 md:p-6 space-y-3 md:space-y-4 overflow-hidden group">
-                      <div className="h-5 md:h-6 w-2/3 bg-gray-100 rounded-lg animate-pulse" />
-                      <div className="space-y-2">
-                        <div className="h-1.5 w-full bg-gray-50 rounded-full" />
-                        <div className="h-1.5 w-4/5 bg-gray-50 rounded-full" />
-                        <div className="h-1.5 w-full bg-gray-50 rounded-full" />
-                      </div>
-                      <div className="pt-8 md:pt-10 flex justify-center opacity-20 group-hover:opacity-40 transition-opacity">
-                         <FileText className="w-12 h-12 md:w-16 md:h-16 text-primary-900" />
-                      </div>
+                      {scan.url ? (
+                        <img 
+                          src={scan.url} 
+                          className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                          alt="" 
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <>
+                          <div className="h-5 md:h-6 w-2/3 bg-gray-100 rounded-lg animate-pulse" />
+                          <div className="space-y-2">
+                            <div className="h-1.5 w-full bg-gray-50 rounded-full" />
+                            <div className="h-1.5 w-4/5 bg-gray-50 rounded-full" />
+                            <div className="h-1.5 w-full bg-gray-50 rounded-full" />
+                          </div>
+                          <div className="pt-8 md:pt-10 flex justify-center opacity-20 group-hover:opacity-40 transition-opacity">
+                             <FileText className="w-12 h-12 md:w-16 md:h-16 text-primary-900" />
+                          </div>
+                        </>
+                      )}
                       
                       {/* Hover Overlay */}
                       <div className="absolute inset-0 bg-ai-gradient opacity-0 group-hover:opacity-10 transition-opacity" />
                     </div>
                     <div className="p-4 md:p-5 space-y-1 bg-white/[0.03]">
-                      <h4 className="text-xs md:text-sm font-bold text-white truncate">{scan.name}</h4>
+                      <h4 className="text-xs md:text-sm font-bold text-text-main truncate">{scan.name}</h4>
                       <div className="flex items-center gap-2">
                         <Clock className="w-3 h-3 text-zinc-500" />
                         <span className="text-[9px] md:text-[10px] font-bold text-zinc-500 uppercase">{scan.modifiedAt.toLocaleDateString()}</span>
@@ -146,9 +203,9 @@ export default function Home({ onNavigate }: HomeProps) {
                <div className="flex flex-col gap-5 md:gap-6">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-ai-blue flex items-center justify-center shadow-[0_0_15px_rgba(79,124,255,0.4)]">
-                      <Bot className="w-5 h-5 md:w-6 md:h-6 text-white" />
+                      <Bot className="w-5 h-5 md:w-6 md:h-6 text-accent-text" />
                     </div>
-                    <h2 className="text-lg md:text-xl font-bold text-white">Assistant Core</h2>
+                    <h2 className="text-lg md:text-xl font-bold text-text-main">Assistant Core</h2>
                   </div>
                   <div className="space-y-4">
                     <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 text-xs md:text-sm leading-relaxed text-zinc-300">
@@ -174,7 +231,7 @@ export default function Home({ onNavigate }: HomeProps) {
                       <Sparkles className="w-4 h-4 md:w-5 md:h-5 text-ai-blue" />
                     </div>
                     <div className="space-y-1">
-                      <h4 className="font-bold text-white text-xs md:text-sm">{s.title}</h4>
+                      <h4 className="font-bold text-text-main text-xs md:text-sm">{s.title}</h4>
                       <p className="text-[10px] md:text-xs text-zinc-500 font-medium leading-tight">{s.description}</p>
                     </div>
                   </div>

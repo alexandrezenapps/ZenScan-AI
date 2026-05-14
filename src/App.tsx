@@ -13,23 +13,32 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AppView, DocumentMetadata } from './types';
 import { updateAppMeta } from './lib/icons';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
-import Splash from './views/Splash';
-import Onboarding from './views/Onboarding';
-import Home from './views/Home';
-import Library from './views/Library';
-import Scanner from './views/Scanner';
-import OCRAnalysis from './views/OCRAnalysis';
-import Editor from './views/Editor';
-import Assistant from './views/Assistant';
-import Settings from './views/Settings';
 import { useAuth } from './context/AuthContext';
 import { Loader2 } from 'lucide-react';
+
+// Lazy load views for better performance
+const Splash = lazy(() => import('./views/Splash'));
+const Onboarding = lazy(() => import('./views/Onboarding'));
+const Home = lazy(() => import('./views/Home'));
+const Library = lazy(() => import('./views/Library'));
+const Scanner = lazy(() => import('./views/Scanner'));
+const OCRAnalysis = lazy(() => import('./views/OCRAnalysis'));
+const Editor = lazy(() => import('./views/Editor'));
+const Assistant = lazy(() => import('./views/Assistant'));
+const Settings = lazy(() => import('./views/Settings'));
+
+const LoadingFallback = () => (
+  <div className="min-h-screen bg-primary-950 flex flex-col items-center justify-center gap-4">
+    <Loader2 className="w-10 h-10 text-ai-blue animate-spin" />
+    <p className="text-[10px] font-black text-ai-blue/40 uppercase tracking-[0.3em]">Chargement...</p>
+  </div>
+);
 
 export default function App() {
   const [currentView, setCurrentView] = useState<AppView | 'SPLASH' | 'ONBOARDING'>('SPLASH');
@@ -113,7 +122,9 @@ export default function App() {
 
       <main className={showNav ? "pb-32" : ""}>
         <AnimatePresence mode="wait">
-          {renderView()}
+          <Suspense fallback={<LoadingFallback />}>
+            {renderView()}
+          </Suspense>
         </AnimatePresence>
       </main>
 

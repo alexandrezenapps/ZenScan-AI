@@ -32,7 +32,7 @@ export default function BottomNav({ currentView, onNavigate }: BottomNavProps) {
             id={`nav-${item.id.toLowerCase()}`}
             onClick={() => onNavigate(item.id as AppView)}
             className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${
-              currentView === item.id ? 'opacity-100 text-ai-blue' : 'opacity-40 text-white'
+              currentView === item.id ? 'opacity-100 text-ai-blue' : 'opacity-40 text-text-main'
             }`}
           >
             <item.icon className="w-6 h-6" />
@@ -52,7 +52,7 @@ export default function BottomNav({ currentView, onNavigate }: BottomNavProps) {
             id={`nav-${item.id.toLowerCase()}`}
             onClick={() => onNavigate(item.id as AppView)}
             className={`flex flex-col items-center gap-1 transition-all active:scale-90 ${
-              currentView === item.id ? 'opacity-100 text-ai-blue' : 'opacity-40 text-white'
+              currentView === item.id ? 'opacity-100 text-ai-blue' : 'opacity-40 text-text-main'
             }`}
           >
             <item.icon className="w-6 h-6" />

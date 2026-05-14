@@ -169,9 +169,30 @@ export default function Assistant({ onNavigate }: AssistantProps) {
         <div className="max-w-3xl mx-auto space-y-4 md:space-y-6">
           {/* Suggested Actions */}
           <div className="flex items-center gap-2 md:gap-3 overflow-x-auto no-scrollbar py-1">
-            <SuggestionChip icon={Sparkles} label="Résumer" />
-            <SuggestionChip icon={Receipt} label="Extraire Montant" />
-            <SuggestionChip icon={Mail} label="Email Réponse" />
+            <SuggestionChip 
+              icon={Sparkles} 
+              label="Résumer" 
+              onClick={() => {
+                setInputValue("Peux-tu me faire un résumé de mes derniers documents ?");
+                handleSendMessage();
+              }}
+            />
+            <SuggestionChip 
+              icon={Receipt} 
+              label="Extraire Montant" 
+              onClick={() => {
+                setInputValue("Quel est le montant total de mes factures ce mois-ci ?");
+                handleSendMessage();
+              }}
+            />
+            <SuggestionChip 
+              icon={Mail} 
+              label="Email Réponse" 
+              onClick={() => {
+                setInputValue("Aide-moi à rédiger un email de réponse pour le document sélectionné.");
+                handleSendMessage();
+              }}
+            />
           </div>
 
           {/* Input Bar */}
@@ -187,7 +208,10 @@ export default function Assistant({ onNavigate }: AssistantProps) {
                  placeholder="Posez une question..."
                  className="flex-1 bg-transparent border-none text-white placeholder:text-zinc-600 focus:ring-0 text-sm outline-none font-medium"
                />
-               <button className="hidden xs:flex w-9 h-9 md:w-10 md:h-10 items-center justify-center text-zinc-600 hover:text-white transition-colors">
+               <button 
+                onClick={() => alert('Sélection de fichier pour analyse...')}
+                className="hidden xs:flex w-9 h-9 md:w-10 md:h-10 items-center justify-center text-zinc-600 hover:text-white transition-colors"
+               >
                  <Paperclip className="w-5 h-5" />
                </button>
                <button 
@@ -204,9 +228,12 @@ export default function Assistant({ onNavigate }: AssistantProps) {
   );
 }
 
-function SuggestionChip({ icon: Icon, label }: { icon: any, label: string }) {
+function SuggestionChip({ icon: Icon, label, onClick }: { icon: any, label: string, onClick?: () => void }) {
   return (
-    <button className="px-6 py-3 bg-primary-800 border border-white/5 rounded-full text-xs font-bold text-ai-blue-light hover:bg-ai-blue/10 hover:border-ai-blue/30 transition-all flex items-center gap-3 whitespace-nowrap glass-card">
+    <button 
+      onClick={onClick}
+      className="px-6 py-3 bg-primary-800 border border-white/5 rounded-full text-xs font-bold text-ai-blue-light hover:bg-ai-blue/10 hover:border-ai-blue/30 transition-all flex items-center gap-3 whitespace-nowrap glass-card"
+    >
       <Icon className="w-4 h-4" />
       {label}
     </button>

@@ -13,6 +13,7 @@ export enum ScanStatus {
 
 export interface DocumentMetadata {
   id: string;
+  userId?: string;
   name: string;
   type: 'PDF' | 'JPG' | 'PNG';
   category?: string;

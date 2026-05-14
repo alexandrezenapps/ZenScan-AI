@@ -42,7 +42,7 @@ export const PrimaryButton: React.FC<{ text: string; onClick: () => void; classN
       whileHover={{ scale: 1.02, y: -2 }}
       whileTap={{ scale: 0.96 }}
       onClick={onClick}
-      className={`relative h-14 px-8 bg-ai-gradient rounded-[18px] text-white font-bold ai-glow-blue flex items-center justify-center gap-3 overflow-hidden group ${className}`}
+      className={`relative h-14 px-8 bg-ai-gradient rounded-[18px] text-accent-text font-bold ai-glow-blue flex items-center justify-center gap-3 overflow-hidden group ${className}`}
     >
       <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
       {Icon && <Icon className="w-5 h-5" />}
@@ -71,7 +71,7 @@ export const ScanButtonFloating: React.FC<{ onClick: () => void }> = ({ onClick 
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.92 }}
         onClick={onClick}
-        className="relative w-18 h-18 rounded-full bg-ai-gradient shadow-[0_15px_30px_rgba(79,124,255,0.5)] flex items-center justify-center text-white"
+        className="relative w-18 h-18 rounded-full bg-ai-gradient shadow-[0_15px_30px_rgba(79,124,255,0.5)] flex items-center justify-center text-accent-text"
       >
         <Scan className="w-8 h-8" />
         <div className="absolute inset-0 rounded-full border-2 border-white/20" />

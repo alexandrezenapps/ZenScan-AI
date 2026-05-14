@@ -12,14 +12,17 @@
   --spacing-xl: 64px;
 
   /* Colors */
-  --color-primary-900: #09090B;
-  --color-primary-800: #111113;
-  --color-primary-700: #1A1A1D;
-  --color-primary-600: #27272A;
+  --color-primary-900: var(--bg-primary, #09090B);
+  --color-primary-800: var(--bg-secondary, #111113);
+  --color-primary-700: var(--bg-secondary, #1A1A1D);
+  --color-primary-600: var(--bg-secondary, #27272A);
 
-  --color-ai-blue: #4F7CFF;
-  --color-ai-blue-light: #7AA2FF;
-  --color-ai-blue-dark: #2F5BDA;
+  --color-ai-blue: var(--accent, #4F7CFF);
+  --color-ai-blue-light: var(--accent, #7AA2FF);
+  --color-ai-blue-dark: var(--accent, #2F5BDA);
+  --color-accent-text: var(--accent-contrast, #ffffff);
+  --color-text-main: var(--text-main, #ffffff);
+  --color-text-muted: var(--text-muted, #71717a);
 
   --color-success: #10B981;
   --color-warning: #F59E0B;
@@ -34,7 +37,7 @@
 
 @layer base {
   body {
-    @apply bg-primary-900 text-white selection:bg-ai-blue/30;
+    @apply bg-primary-900 text-text-main selection:bg-ai-blue/30;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
@@ -47,15 +50,15 @@
   }
 
   .ai-glow {
-    box-shadow: 0 0 30px rgba(79, 124, 255, 0.25);
+    box-shadow: 0 0 30px var(--accent, rgba(79, 124, 255, 0.25));
   }
 
   .ai-gradient {
-    background: linear-gradient(135deg, #4F7CFF 0%, #7AA2FF 100%);
+    background: linear-gradient(135deg, var(--accent, #4F7CFF) 0%, var(--ai-blue-light, #7AA2FF) 100%);
   }
 
   .ai-glow-pulse {
-    background: radial-gradient(circle, rgba(79, 124, 255, 0.15) 0%, rgba(79, 124, 255, 0) 70%);
+    background: radial-gradient(circle, var(--accent, rgba(79, 124, 255, 0.15)) 0%, transparent 70%);
   }
 
   .scan-line {

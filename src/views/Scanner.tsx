@@ -24,6 +24,15 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const shutterSoundRef = useRef<HTMLAudioElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Preload shutter sound
+    shutterSoundRef.current = new Audio('https://assets.mixkit.io/active_storage/sfx/2571/2571-preview.mp3');
+    shutterSoundRef.current.volume = 0.3; // Subtle volume
+    shutterSoundRef.current.load();
+  }, []);
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -35,13 +44,15 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
   const startCamera = async () => {
     stopCamera();
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const constraints: MediaStreamConstraints = {
         video: { 
-          facingMode,
+          facingMode: { ideal: facingMode },
           width: { ideal: 1920 },
           height: { ideal: 1080 }
         }
-      });
+      };
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -49,7 +60,15 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
       setHasCameraAccess(true);
     } catch (err) {
       console.error("Error accessing camera:", err);
-      setHasCameraAccess(false);
+      // Fallback for some browsers/devices
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        streamRef.current = stream;
+        if (videoRef.current) videoRef.current.srcObject = stream;
+        setHasCameraAccess(true);
+      } catch (finalErr) {
+        setHasCameraAccess(false);
+      }
     }
   };
 
@@ -63,30 +82,83 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
   const startScan = () => {
     if (status !== ScanStatus.IDLE) return;
     
-    setCountdown(null);
-    setStatus(ScanStatus.SCANNING);
-    
-    // Captured image from video
-    let capturedImage = '';
-    if (videoRef.current) {
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(videoRef.current, 0, 0);
-        capturedImage = canvas.toDataURL('image/jpeg');
-      }
+    // Play shutter sound immediately
+    if (shutterSoundRef.current) {
+      shutterSoundRef.current.currentTime = 0;
+      shutterSoundRef.current.play().catch(e => console.log("Audio play blocked", e));
     }
 
-    // Simulate camera capture flash
+    // Vibrate device if supported
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+
+    setCountdown(null);
+    setStatus(ScanStatus.SCANNING);
+    setShowFlash(true);
+    
+    // Capture image with a small delay to ensure video buffer is ready
+    const captureFrame = () => {
+      let capturedImage = '';
+      if (videoRef.current && videoRef.current.readyState >= 2) {
+        const video = videoRef.current;
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+        
+        if (width > 0 && height > 0) {
+          const canvas = document.createElement('canvas');
+          // Optimized dimensions for processing and storage
+          const maxDim = 1000; 
+          let targetWidth = width;
+          let targetHeight = height;
+          
+          if (targetWidth > maxDim || targetHeight > maxDim) {
+            if (targetWidth > targetHeight) {
+              targetHeight = Math.round((targetHeight * maxDim) / targetWidth);
+              targetWidth = maxDim;
+            } else {
+              targetWidth = Math.round((targetWidth * maxDim) / targetHeight);
+              targetHeight = maxDim;
+            }
+          }
+          
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          const ctx = canvas.getContext('2d', { alpha: false }); // Performance optimization
+          if (ctx) {
+            // Fill white background just in case
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, targetWidth, targetHeight);
+            
+            // Apply mirroring if using user camera
+            if (facingMode === 'user') {
+              ctx.translate(targetWidth, 0);
+              ctx.scale(-1, 1);
+            }
+            ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+            
+            // Use 0.8 quality to keep size under 1MB even with base64 overhead
+            capturedImage = canvas.toDataURL('image/jpeg', 0.8);
+          }
+        }
+      }
+      return capturedImage;
+    };
+
+    // Flash effect duration and then proceed
     setTimeout(() => {
-      setShowFlash(true);
-      setTimeout(() => {
-        setShowFlash(false);
-        onScanComplete(capturedImage);
-      }, 200);
-    }, 1500);
+      const img = captureFrame();
+      setShowFlash(false);
+      
+      if (img && img.startsWith('data:image/jpeg;base64,') && img.length > 1000) { 
+        onScanComplete(img);
+      } else {
+        console.error("Capture failed: Image too small or invalid", img ? img.length : 0);
+        setStatus(ScanStatus.IDLE);
+        // Fallback or retry? Let's just reset for now
+        alert("Échec de la capture. Veuillez stabiliser votre appareil et réessayer.");
+      }
+    }, 200); // Slightly longer delay for stability
   };
 
   useEffect(() => {
@@ -174,15 +246,28 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
         {/* Real Camera Feed */}
         <div className="absolute inset-0 bg-black">
           {hasCameraAccess === false ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center space-y-4">
-              <Camera className="w-16 h-16 text-zinc-800" />
-              <p className="text-zinc-500 font-bold tracking-tight">Accès à la caméra refusé ou indisponible.</p>
-              <button 
-                onClick={startCamera}
-                className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs font-black uppercase tracking-widest text-white"
-              >
-                Réessayer
-              </button>
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center bg-zinc-950">
+              <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mb-8 border border-red-500/20">
+                <Camera className="w-10 h-10 text-red-500" />
+              </div>
+              <h3 className="text-2xl font-black text-white mb-3">Accès Refusé</h3>
+              <p className="text-zinc-500 text-sm max-w-xs leading-relaxed mb-10">
+                ZenScan a besoin de votre caméra pour fonctionner. Veuillez autoriser l'accès dans les réglages.
+              </p>
+              <div className="flex flex-col w-full max-w-[240px] gap-4">
+                <button 
+                  onClick={startCamera}
+                  className="w-full py-5 bg-white text-black font-black text-xs uppercase tracking-widest rounded-3xl active:scale-95 transition-transform"
+                >
+                  RÉESSAYER
+                </button>
+                <button 
+                  onClick={() => onNavigate('HOME')}
+                  className="w-full py-5 bg-white/5 border border-white/10 text-white font-black text-xs uppercase tracking-widest rounded-3xl active:scale-95 transition-transform"
+                >
+                  RETOUR
+                </button>
+              </div>
             </div>
           ) : (
             <video 
@@ -286,9 +371,30 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
         <div className="max-w-md mx-auto px-8 space-y-12">
           {/* Main Controls Row */}
           <div className="flex items-center justify-between">
-            <button className="w-16 h-16 rounded-[24px] bg-white/5 border border-white/10 flex items-center justify-center group active:scale-90 transition-transform">
-               <ImageIcon className="w-6 h-6 text-white group-hover:text-ai-blue transition-colors" />
-            </button>
+            <div className="relative">
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      onScanComplete(reader.result as string);
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="w-16 h-16 rounded-[24px] bg-white/5 border border-white/10 flex items-center justify-center group active:scale-90 transition-transform"
+              >
+                 <ImageIcon className="w-6 h-6 text-white group-hover:text-ai-blue transition-colors" />
+              </button>
+            </div>
 
             <div className="relative">
               <motion.div 

@@ -1,24 +1,25 @@
-# Security Specification for ZenScan
+# Security Specification - ZenScan
 
-## Data Invariants
-1. A user can only read and write their own profile document.
-2. A document must belong to a valid user and can only be accessed by its owner.
-3. Timestamps (`createdAt`, `updatedAt`) must be server-verified.
-4. Document IDs must be valid strings.
+## 1. Data Invariants
+- A user document must correspond to the authenticated user's UID.
+- A document record must belong to a valid user and carry that user's UID as `userId`.
+- Timestamps (`createdAt`, `updatedAt`) must be server-generated.
+- Core Identity fields (`uid` for users, `userId` for documents) are immutable after creation.
+- Document types are restricted to standard scan formats.
 
-## The "Dirty Dozen" Payloads (Deny cases)
-1. Write to another user's profile.
-2. Read another user's documents.
-3. Create a document with another user's `userId`.
-4. Update a document's `userId` (immutability).
-5. Inject massive strings (>1MB) into `contentSnippet`.
-6. Set `isAiEnhanced` without proper validation.
-7. Use non-alphanumeric characters in document IDs.
-8. Delete a user profile (unless admin).
-9. Create a document with a future `createdAt` timestamp.
-10. Update a terminal status (if applicable).
-11. Query documents without filtering by `userId`.
-12. Append fields not in the schema.
+## 2. The "Dirty Dozen" Payloads (Anti-Patterns)
+1. **Identity Theft**: Creating a user profile with another user's UID.
+2. **PII Leak**: Reading another user's profile information.
+3. **Ghost Fields**: Adding unauthorized administrative fields like `isAdmin: true` to a profile.
+4. **Timestamp Spoofing**: Sending client-side timestamps for `createdAt`.
+5. **ID Poisoning**: Using a 2KB string as a document ID.
+6. **Orphaned Writes**: Creating a document for a user that doesn't exist.
+7. **Type Mismatch**: Sending a string where a boolean (`isAiEnhanced`) is expected.
+8. **Privilege Escalation**: Updating the `uid` of an existing user document.
+9. **Identity Spoofing**: Setting `userId` of a document record to someone else.
+10. **Query Scraping**: Listing all user documents without filtering by `userId`.
+11. **Malicious Tags**: Injecting 1000 tags into a document.
+12. **Shadow Edit**: Modifying a document's `userId` to transfer ownership.
 
-## Test Runner (Draft)
-A `firestore.rules.test.ts` would verify these constraints using the Firebase Rules Emulator or similar.
+## 3. Test Runner
+Verification is performed via `DRAFT_firestore.rules` validation logic.

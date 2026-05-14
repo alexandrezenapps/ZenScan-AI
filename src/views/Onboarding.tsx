@@ -107,7 +107,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             </div>
 
             <div className="space-y-3 md:space-y-5">
-              <h2 className="text-4xl md:text-[44px] font-extrabold text-white tracking-tighter leading-none">
+              <h2 className="text-4xl md:text-[44px] font-extrabold text-text-main tracking-tighter leading-none">
                 {slides[step].title}
               </h2>
               <p className="text-zinc-500 text-base md:text-xl font-medium leading-relaxed px-4">
@@ -149,7 +149,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         <button
           onClick={handleNext}
           disabled={isLoggingIn}
-          className="group relative w-full h-16 md:h-18 bg-ai-gradient rounded-2xl md:rounded-3xl text-white font-black text-lg md:text-xl ai-glow flex items-center justify-center gap-4 active:scale-[0.96] transition-all shadow-xl disabled:opacity-50"
+          className="group relative w-full h-16 md:h-18 bg-ai-gradient rounded-2xl md:rounded-3xl text-accent-text font-black text-lg md:text-xl ai-glow flex items-center justify-center gap-4 active:scale-[0.96] transition-all shadow-xl disabled:opacity-50"
         >
           {isLoggingIn ? (
             <Loader2 className="w-7 h-7 animate-spin" />
