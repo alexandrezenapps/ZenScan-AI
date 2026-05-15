@@ -25,6 +25,8 @@ export interface DocumentMetadata {
   contentSnippet?: string;
   extractedData?: Record<string, any>;
   url?: string;
+  thumbnailUrl?: string;
+  ocrLanguage?: string;
 }
 
 export interface ChatMessage {

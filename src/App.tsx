@@ -44,6 +44,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<AppView | 'SPLASH' | 'ONBOARDING'>('SPLASH');
   const [selectedDocument, setSelectedDocument] = useState<DocumentMetadata | null>(null);
   const [scannedImage, setScannedImage] = useState<string | null>(null);
+  const [ocrLanguage, setOcrLanguage] = useState<string>('Français');
   const { user, loading } = useAuth();
 
   useEffect(() => {
@@ -85,8 +86,9 @@ export default function App() {
         return (
           <Scanner 
             onNavigate={setCurrentView} 
-            onScanComplete={(img) => {
+            onScanComplete={(img, lang) => {
               setScannedImage(img || null);
+              if (lang) setOcrLanguage(lang);
               setCurrentView('OCR');
             }} 
           />
@@ -101,6 +103,7 @@ export default function App() {
             }} 
             onSelectDocument={setSelectedDocument}
             scannedImage={scannedImage}
+            initialLanguage={ocrLanguage}
           />
         );
       case 'EDITOR':
@@ -114,13 +117,13 @@ export default function App() {
     }
   };
 
-  const showNav = currentView !== 'SPLASH' && currentView !== 'ONBOARDING' && currentView !== 'SCANNER';
+  const showNav = currentView !== 'SPLASH' && currentView !== 'ONBOARDING';
 
   return (
     <div className="min-h-screen bg-primary-900 overflow-x-hidden">
-      {showNav && <Navbar />}
+      {showNav && currentView !== 'SCANNER' && currentView !== 'OCR' && <Navbar />}
 
-      <main className={showNav ? "pb-32" : ""}>
+      <main className={showNav ? "pb-24 md:pb-32" : ""}>
         <AnimatePresence mode="wait">
           <Suspense fallback={<LoadingFallback />}>
             {renderView()}
@@ -128,7 +131,19 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {showNav && <BottomNav currentView={currentView as AppView} onNavigate={setCurrentView} />}
+      {showNav && (
+        <div className="fixed bottom-0 left-0 right-0 z-[100] pointer-events-none">
+          <div className="pointer-events-auto">
+            <BottomNav 
+              currentView={currentView as AppView} 
+              onNavigate={setCurrentView} 
+              onScan={() => {
+                window.dispatchEvent(new CustomEvent('zen-trigger-scan'));
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

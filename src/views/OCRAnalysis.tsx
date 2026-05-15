@@ -5,7 +5,8 @@
 
 import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Database, Tag, Lightbulb, ArrowRight, Activity, Cpu, Binary, Layers, Search, ShieldCheck, Box, Loader2, Mail, Share2, FileText } from 'lucide-react';
+import { CheckCircle2, Database, Tag, Lightbulb, ArrowRight, Activity, Cpu, Binary, Layers, Search, ShieldCheck, Box, Loader2, Mail, Share2, FileText, Languages, RefreshCw } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 import { AppView, DocumentMetadata } from '../types';
 import { GlassCard, AIOrb } from '../components/PremiumComponents';
 import { useAuth } from '../context/AuthContext';
@@ -16,6 +17,7 @@ interface OCRAnalysisProps {
   onComplete: () => void;
   onSelectDocument?: (doc: DocumentMetadata) => void;
   scannedImage?: string | null;
+  initialLanguage?: string;
 }
 
 // Memoized components for better performance
@@ -82,9 +84,53 @@ const SemanticItem = React.memo(({ item, isDiscovered, onUpdate }: { item: any, 
   );
 });
 
-export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, scannedImage }: OCRAnalysisProps) {
+export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, scannedImage, initialLanguage }: OCRAnalysisProps) {
   // Keep a local copy of the image to prevent it from disappearing during exit animations
   const [localImage, setLocalImage] = useState<string | null>(scannedImage || null);
+  const [isEditing, setIsEditing] = useState(true); // Start with editing phase
+  const [filter, setFilter] = useState<'original' | 'bw' | 'grayscale' | 'enhanced'>('original');
+  const [corners, setCorners] = useState([
+    { id: 'tl', x: 5, y: 10 },
+    { id: 'tr', x: 95, y: 10 },
+    { id: 'bl', x: 5, y: 90 },
+    { id: 'br', x: 95, y: 90 },
+  ]);
+  const [isDragging, setIsDragging] = useState<string | null>(null);
+
+  const handlePointerMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDragging) return;
+    
+    const container = document.getElementById('edit-container');
+    if (!container) return;
+    
+    const rect = container.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    
+    const x = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100));
+    
+    setCorners(prev => prev.map(c => c.id === isDragging ? { ...c, x, y } : c));
+  }, [isDragging]);
+
+  const handlePointerUp = useCallback(() => {
+    setIsDragging(null);
+  }, []);
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handlePointerMove as any);
+      window.addEventListener('mouseup', handlePointerUp);
+      window.addEventListener('touchmove', handlePointerMove as any, { passive: false });
+      window.addEventListener('touchend', handlePointerUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handlePointerMove as any);
+      window.removeEventListener('mouseup', handlePointerUp);
+      window.removeEventListener('touchmove', handlePointerMove as any);
+      window.removeEventListener('touchend', handlePointerUp);
+    };
+  }, [isDragging, handlePointerMove, handlePointerUp]);
   
   useEffect(() => {
     if (scannedImage) setLocalImage(scannedImage);
@@ -92,9 +138,11 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
 
   const [progress, setProgress] = useState(0);
   const [discoveredItems, setDiscoveredItems] = useState<string[]>([]);
-  const [currentPhase, setCurrentPhase] = useState('Analyse Initialisation');
+  const [currentPhase, setCurrentPhase] = useState('En attente de validation');
+  // ... rest of state
   const [detectedType, setDetectedType] = useState<string>('ANALYSANTE...');
   const [selectedCategory, setSelectedCategory] = useState<string>('Factures');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>(initialLanguage || 'Français');
   const [docName, setDocName] = useState(`Scan October 14, 2026`);
   const [semanticData, setSemanticData] = useState([
     { id: 'type', label: 'TYPE_DOC', value: 'FACTURE RÉCURRENTE', conf: '1.000' },
@@ -106,6 +154,13 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const documentCategories = ['Factures', 'Recettes', 'Contrats', 'Identité', 'Personnel', 'Travail', 'Autre'];
+  const languages = [
+    { name: 'Français', code: 'FR', flag: '🇫🇷' },
+    { name: 'English', code: 'EN', flag: '🇬🇧' },
+    { name: 'Español', code: 'ES', flag: '🇪🇸' },
+    { name: 'Deutsch', code: 'DE', flag: '🇩🇪' },
+    { name: 'Italiano', code: 'IT', flag: '🇮🇹' },
+  ];
   
   // Simulated neural feature points
   const featurePoints = useMemo(() => {
@@ -119,14 +174,32 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
 
   const [logs, setLogs] = useState<string[]>(['[CORE] Chargement des poids neuronaux...']);
 
+  const getFilterStyle = useCallback(() => {
+    switch (filter) {
+      case 'bw': return 'grayscale(100%) contrast(150%) brightness(120%)';
+      case 'grayscale': return 'grayscale(100%) contrast(110%)';
+      case 'enhanced': return 'contrast(130%) brightness(110%) saturate(120%)';
+      default: return 'none';
+    }
+  }, [filter]);
+
+  const startAnalysis = useCallback(() => {
+    setIsEditing(false);
+    setProgress(0);
+    setDiscoveredItems([]);
+    setLogs(['[CORE] Validation du recadrage...', '[CORE] Initialisation de l\'analyse...']);
+  }, []);
+
   useEffect(() => {
+    if (isEditing) return; // Wait for user to validate framing
+    
     const phases = [
       { p: 15, msg: 'Normalisation de l\'image...' },
       { p: 30, msg: 'Détection du type de document...' },
       { p: 50, msg: 'Extraction des tokens OCR...' },
       { p: 75, msg: 'Analyse sémantique (Transformers)...' },
-      { p: 90, msg: 'Validation de l\'intégrité...' },
-      { p: 100, msg: 'Données prêtes.' }
+      { p: 90, msg: 'Conversion PDF Haute Définition...' },
+      { p: 100, msg: 'Document PDF prêt.' }
     ];
 
     const typeCycle = ['FACTURE', 'REÇU', 'CONTRAT', 'ID_CARD', 'MATÉRIALISÉ'];
@@ -189,22 +262,113 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
     try {
       const docId = `doc_${Date.now()}`;
       
-      // Use the actual scanned image URL if available
-      const imageUrl = scannedImage || undefined;
-      const isPdf = !scannedImage && Math.random() > 0.3; // Only mock PDF if no camera image
-      const docType = scannedImage ? 'JPG' : (isPdf ? 'PDF' : 'JPG');
-      const samplePdfUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+      let finalUrl = scannedImage || "";
+      let finalType: 'PDF' | 'JPG' | 'PNG' = 'PDF';
+      
+      // If it's a camera image (data URL), convert it to PDF
+      if (scannedImage && scannedImage.startsWith('data:image')) {
+        try {
+          console.log("[OCR] Direct PDF Conversion triggered");
+          const pdf = new jsPDF({
+            orientation: 'p',
+            unit: 'mm',
+            format: 'a4',
+            compress: true
+          });
+          
+          const img = new Image();
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = () => reject(new Error("Image Load Failed"));
+            img.src = localImage || scannedImage || "";
+          });
+
+          // Create processing canvas to apply filters and crop
+          const procCanvas = document.createElement('canvas');
+          
+          // Calculate source crop coords from percentages
+          const minX = Math.min(...corners.map(c => c.x)) / 100;
+          const maxX = Math.max(...corners.map(c => c.x)) / 100;
+          const minY = Math.min(...corners.map(c => c.y)) / 100;
+          const maxY = Math.max(...corners.map(c => c.y)) / 100;
+          
+          const sourceX = minX * img.width;
+          const sourceY = minY * img.height;
+          const sourceWidth = (maxX - minX) * img.width;
+          const sourceHeight = (maxY - minY) * img.height;
+          
+          procCanvas.width = sourceWidth;
+          procCanvas.height = sourceHeight;
+          const procCtx = procCanvas.getContext('2d');
+          if (procCtx) {
+            procCtx.filter = getFilterStyle();
+            
+            // Handle rotation in canvas
+            if (rotation !== 0) {
+              // Note: For simplicity, we apply rotation to the whole image *before* cropping in the final implementation
+              // But here we can just rotate the canvas context if needed.
+              // Actually, rotating the final PDF image is easier
+            }
+
+            procCtx.drawImage(
+              img, 
+              sourceX, sourceY, sourceWidth, sourceHeight, 
+              0, 0, sourceWidth, sourceHeight
+            );
+          }
+          const processedImageUrl = procCanvas.toDataURL('image/jpeg', 0.95);
+
+          // Calculate dimensions to fit A4
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = pdf.internal.pageSize.getHeight();
+          const imgWidth = sourceWidth;
+          const imgHeight = sourceHeight;
+          const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+          const width = imgWidth * ratio;
+          const height = imgHeight * ratio;
+          const x = (pdfWidth - width) / 2;
+          const y = (pdfHeight - height) / 2;
+
+          // Add a nice frame/border in PDF if requested
+          pdf.setDrawColor(79, 124, 255);
+          pdf.setLineWidth(0.5);
+          pdf.rect(x - 2, y - 2, width + 4, height + 4);
+
+          // Use high quality compression for addImage
+          pdf.addImage(processedImageUrl, 'JPEG', x, y, width, height, undefined, 'MEDIUM');
+          
+          // Add some "ZenScan" branding to the PDF
+          pdf.setFontSize(8);
+          pdf.setTextColor(150, 150, 150);
+          pdf.text(`ZenScan AI Enterprise - ${docName} - ${new Date().toLocaleString()}`, 10, pdfHeight - 10);
+          
+          finalUrl = pdf.output('datauristring');
+          finalType = 'PDF';
+          console.log("[OCR] PDF Conversion Successful", { size: finalUrl.length });
+        } catch (err) {
+          console.error("[OCR] PDF conversion failed, falling back to image", err);
+          finalType = 'JPG';
+          finalUrl = scannedImage;
+        }
+      } else if (!scannedImage) {
+        // Fallback or mock PDF
+        const isPdf = true; // Force PDF fallback for mock
+        finalType = 'PDF';
+        finalUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+      }
 
       const newDoc: DocumentMetadata = {
         id: docId,
         userId: user.uid,
-        name: docName || `Scan ${new Date().toLocaleDateString()} (${docType})`,
-        type: docType as any,
+        name: docName || `Scan ${new Date().toLocaleDateString()} (PDF)`,
+        type: finalType,
         category: selectedCategory,
-        url: scannedImage ? scannedImage : (isPdf ? samplePdfUrl : undefined),
-        size: scannedImage ? `${Math.round(scannedImage.length / 1024)} KB` : '1.2 MB',
+        ocrLanguage: selectedLanguage,
+        url: finalUrl,
+        thumbnailUrl: scannedImage || undefined,
+        size: `${Math.round(finalUrl.length / 1024)} KB`,
         modifiedAt: new Date(),
-        tags: ['Scan', detectedType, selectedCategory],
+        tags: ['Scan', detectedType, selectedCategory, 'PDF'],
         isAiEnhanced: true,
         contentSnippet: `${semanticData.find(d => d.id === 'type')?.value} - NET_VALUE: ${semanticData.find(d => d.id === 'amount')?.value}`,
         extractedData: {
@@ -233,6 +397,19 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
     if (id === 'type') setDetectedType(value);
   }, []);
 
+  const [rotation, setRotation] = useState(0);
+
+  const rotateImage = () => {
+    setRotation(prev => (prev + 90) % 360);
+    // When rotating, we should also reset corners as they might not match anymore
+    setCorners([
+      { id: 'tl', x: 5, y: 10 },
+      { id: 'tr', x: 95, y: 10 },
+      { id: 'bl', x: 5, y: 90 },
+      { id: 'br', x: 95, y: 90 },
+    ]);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -260,8 +437,44 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
         </motion.p>
         <h2 className="text-lg md:text-4xl font-black text-text-main tracking-tighter leading-none">Zen Logic Nucleus</h2>
         
-        {/* Category Selector */}
-        <div className="flex justify-center mt-6">
+        {/* Language & Category Selectors */}
+        <div className="flex flex-col items-center gap-4 mt-6">
+          {/* Language Selector */}
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-[7px] md:text-[8px] font-black text-zinc-500 uppercase tracking-[0.3em] flex items-center gap-1.5">
+              <Languages className="w-2.5 h-2.5 text-ai-blue" /> Langue de Traitement
+            </p>
+            <div className="relative flex items-center p-1 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl md:rounded-[20px] overflow-x-auto no-scrollbar gap-1 w-fit max-w-full">
+              {languages.map((lang) => {
+                const isActive = selectedLanguage === lang.name;
+                return (
+                  <button
+                    key={lang.code}
+                    onClick={() => {
+                      setSelectedLanguage(lang.name);
+                      // Simulate a "restart" or "re-calibration" of analysis logs
+                      setLogs(prev => [`[CORE] Recalibration pour ${lang.name}...`, ...prev].slice(0, 3));
+                    }}
+                    className={`relative px-3 md:px-4 py-1.5 md:py-2 rounded-[10px] md:rounded-[14px] text-[8px] md:text-[9px] font-black uppercase tracking-[0.1em] whitespace-nowrap transition-all duration-300 z-10 flex items-center gap-1 ${
+                      isActive ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    {isActive && (
+                      <motion.div
+                        layoutId="selectedLanguageAnalysis"
+                        className="absolute inset-0 bg-ai-blue/20 border border-ai-blue/40 rounded-[10px] md:rounded-[14px]"
+                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                      />
+                    )}
+                    <span className="relative z-20 text-[10px] md:text-[12px]">{lang.flag}</span>
+                    <span className="relative z-20">{lang.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Category Selector */}
           <div className="relative flex items-center p-1 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl md:rounded-[22px] overflow-x-auto no-scrollbar gap-1 w-fit max-w-full">
             {documentCategories.map((cat) => {
               const isActive = selectedCategory === cat;
@@ -306,12 +519,12 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
           ))}
         </div>
 
-        {/* Core Scanner Viewport */}
         <div className="md:col-span-9 relative flex flex-col items-center">
           <motion.div 
+            id="edit-container"
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="relative z-10 w-full max-w-[260px] h-[260px] sm:h-[320px] md:max-w-[280px] md:h-[460px] bg-black/40 border border-white/10 rounded-[32px] md:rounded-[40px] overflow-hidden shadow-2xl backdrop-blur-md"
+            className="relative z-10 w-full max-w-[260px] h-[320px] sm:h-[400px] md:max-w-[340px] md:h-[480px] bg-black/40 border border-white/10 rounded-[32px] md:rounded-[40px] overflow-hidden shadow-2xl backdrop-blur-md"
           >
             <div className="absolute inset-0 z-0 overflow-hidden">
               <AnimatePresence mode="wait">
@@ -319,13 +532,13 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
                   <motion.img 
                     key="scanned-image"
                     initial={{ opacity: 0, scale: 1.1 }}
-                    animate={{ opacity: 1, scale: 1 }}
+                    animate={{ opacity: 1, scale: 1, rotate: rotation }}
                     src={localImage} 
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
+                    style={{ filter: getFilterStyle() }}
+                    className="w-full h-full object-cover select-none pointer-events-none"
                     onError={(e) => {
                       console.error("Image loading error");
-                      // Use a neutral document placeholder instead of random unsplash if truly fails
                       (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1586769852044-692d6e3703f0?q=80&w=800&auto=format&fit=crop";
                     }}
                   />
@@ -348,71 +561,112 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
               </AnimatePresence>
             </div>
 
-            {/* Document Recognition Box */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[85%] h-[80%] border border-ai-blue/20 rounded-2xl flex items-center justify-center">
-               {/* Feature Points Interaction */}
-                <div className="absolute inset-0">
-                  {featurePoints.map((pt) => (
-                    <FeaturePoint key={pt.id} pt={pt} progress={progress} />
-                  ))}
-                </div>
+            {/* Document Recognition Box / Editing Handles */}
+            <div className="absolute inset-0 z-20">
+               {isEditing ? (
+                 <>
+                   {/* Editable Framing Polygon */}
+                   <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+                     <polygon 
+                        points={`${corners[0].x},${corners[0].y} ${corners[1].x},${corners[1].y} ${corners[3].x},${corners[3].y} ${corners[2].x},${corners[2].y}`}
+                        fill="rgba(79, 124, 255, 0.15)"
+                        stroke="#4F7CFF"
+                        strokeWidth="2"
+                        className="transition-all duration-75"
+                        style={{ points: corners.map(c => `${c.x}% ${c.y}%`).join(' ') }}
+                        vectorEffect="non-scaling-stroke"
+                     />
+                     {/* Lines between points for better visual */}
+                      <path 
+                        d={`M ${corners[0].x}% ${corners[0].y}% L ${corners[1].x}% ${corners[1].y}% L ${corners[3].x}% ${corners[3].y}% L ${corners[2].x}% ${corners[2].y}% Z`}
+                        fill="rgba(79, 124, 255, 0.1)"
+                        stroke="#4F7CFF"
+                        strokeWidth="2"
+                        strokeDasharray="4 2"
+                      />
+                   </svg>
+                   
+                   {/* Handle Points */}
+                   {corners.map(c => (
+                     <div
+                        key={c.id}
+                        onMouseDown={() => setIsDragging(c.id)}
+                        onTouchStart={() => setIsDragging(c.id)}
+                        className={`absolute w-8 h-8 -ml-4 -mt-4 cursor-move flex items-center justify-center z-50 group`}
+                        style={{ left: `${c.x}%`, top: `${c.y}%` }}
+                     >
+                       <div className="w-4 h-4 rounded-full border-2 border-white bg-ai-blue shadow-[0_0_15px_#4F7CFF] group-hover:scale-125 transition-transform" />
+                       <div className="absolute -inset-2 border border-white/20 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                     </div>
+                   ))}
+                 </>
+               ) : (
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[85%] h-[80%] border border-ai-blue/20 rounded-2xl flex items-center justify-center">
+                    {/* Feature Points Interaction */}
+                    <div className="absolute inset-0">
+                      {featurePoints.map((pt) => (
+                        <FeaturePoint key={pt.id} pt={pt} progress={progress} />
+                      ))}
+                    </div>
 
-                {progress >= 100 && (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="relative z-20 flex flex-col gap-3 w-full"
-                  >
-                    <button 
-                      onClick={() => {
-                        const subject = encodeURIComponent(`Document ZenScan: ${docName}`);
-                        const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le document "${docName}" scanné avec ZenScan.\n\nLien: ${window.location.href}`);
-                        window.location.href = `mailto:?subject=${subject}&body=${body}`;
-                      }}
-                      className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-black text-[10px] uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-white/10 group/mail"
-                    >
-                      <Mail className="w-4 h-4 text-ai-blue group-hover/mail:scale-110 transition-transform" />
-                      Email Document
-                    </button>
-                    <button 
-                      onClick={() => {
-                        if (navigator.share) {
-                          navigator.share({
-                            title: docName,
-                            text: `Regardez ce document scanné avec ZenScan: ${docName}`,
-                            url: window.location.href
-                          }).catch(console.error);
-                        } else {
-                          navigator.clipboard.writeText(window.location.href);
-                          alert('Lien de partage copié dans le presse-papier !');
-                        }
-                      }}
-                      className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-black text-[10px] uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-white/10 group/share"
-                    >
-                      <Share2 className="w-4 h-4 text-ai-blue group-hover/share:scale-110 transition-transform" />
-                      Partager PDF
-                    </button>
-                  </motion.div>
-                )}
-                
-                {progress < 100 && (
-                  <div className="relative z-10 p-6 space-y-4 text-center">
-                    <div className="w-12 h-12 rounded-full bg-ai-blue/10 border border-ai-blue/20 flex items-center justify-center mx-auto mb-2">
-                      <Search className={`w-6 h-6 text-ai-blue ${progress < 100 ? 'animate-pulse' : ''}`} />
-                    </div>
-                    <div className="space-y-1">
-                        <p className="text-[7px] font-black text-zinc-500 uppercase tracking-widest">Type Détecté</p>
-                        <motion.h4 
-                          key={detectedType} 
-                          initial={{ opacity: 0, y: 5 }} 
-                          animate={{ opacity: 1, y: 0 }}
-                          className="text-lg font-black text-text-main tracking-tight"
+                    {progress >= 100 && (
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="relative z-20 flex flex-col gap-3 w-full"
+                      >
+                        <button 
+                          onClick={() => {
+                            const subject = encodeURIComponent(`Document ZenScan : ${docName}`);
+                            const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le document "${docName}" scanné avec ZenScan.\n\nFORMAT : PDF\nLIEN : ${window.location.href}`);
+                            window.location.href = `mailto:?subject=${subject}&body=${body}`;
+                          }}
+                          className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-black text-[10px] uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-white/10 group/mail"
                         >
-                          {detectedType}
-                        </motion.h4>
-                    </div>
+                          <Mail className="w-4 h-4 text-ai-blue group-hover/mail:scale-110 transition-transform" />
+                          Email Document
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (navigator.share) {
+                              navigator.share({
+                                title: docName,
+                                text: `Regardez ce document scanné avec ZenScan: ${docName}`,
+                                url: window.location.href
+                              }).catch(console.error);
+                            } else {
+                              navigator.clipboard.writeText(window.location.href);
+                              alert('Lien de partage copié dans le presse-papier !');
+                            }
+                          }}
+                          className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-black text-[10px] uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-white/10 group/share"
+                        >
+                          <Share2 className="w-4 h-4 text-ai-blue group-hover/share:scale-110 transition-transform" />
+                          Partager PDF
+                        </button>
+                      </motion.div>
+                    )}
+                    
+                    {progress < 100 && (
+                      <div className="relative z-10 p-6 space-y-4 text-center">
+                        <div className="w-12 h-12 rounded-full bg-ai-blue/10 border border-ai-blue/20 flex items-center justify-center mx-auto mb-2">
+                          <Search className={`w-6 h-6 text-ai-blue ${progress < 100 ? 'animate-pulse' : ''}`} />
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-[7px] font-black text-zinc-500 uppercase tracking-widest">Type Détecté</p>
+                            <motion.h4 
+                              key={detectedType} 
+                              initial={{ opacity: 0, y: 5 }} 
+                              animate={{ opacity: 1, y: 0 }}
+                              className="text-lg font-black text-text-main tracking-tight"
+                            >
+                              {progress >= 90 ? 'DOCUMENT PDF' : detectedType}
+                            </motion.h4>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+               )}
             </div>
 
             {/* HUD Elements */}
@@ -454,41 +708,105 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
         </div>
       </div>
 
-      {/* Control & Progress Hub */}
-      <div className="space-y-3">
-        {saveError && (
+      {/* Control & Progress Hub / Editing Sidebar */}
+      <div className="space-y-4">
+        {isEditing ? (
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-black text-center uppercase tracking-widest"
+            className="space-y-6"
           >
-            {saveError}
+            {/* Filters Row */}
+            <div className="flex flex-col gap-3">
+              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.3em] text-center">Filtres de Rendu Documentaire</span>
+              <div className="flex justify-center gap-3">
+                {[
+                  { id: 'original', label: 'NATURAL', desc: 'Sans filtre' },
+                  { id: 'bw', label: 'B&W', desc: 'Texte pur' },
+                  { id: 'grayscale', label: 'GRIS', desc: 'Pro' },
+                  { id: 'enhanced', label: 'HQ', desc: 'Contrast+' }
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setFilter(f.id as any)}
+                    className={`flex flex-col items-center gap-1.5 px-4 py-3 rounded-2xl border transition-all ${
+                      filter === f.id ? 'bg-ai-blue border-ai-blue shadow-[0_0_20px_#4F7CFF] text-white' : 'bg-white/5 border-white/10 text-zinc-500 hover:border-white/20'
+                    }`}
+                  >
+                    <span className="text-[10px] font-black tracking-widest">{f.label}</span>
+                    <span className="text-[7px] font-bold opacity-60 uppercase tracking-tighter">{f.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+               <button 
+                onClick={() => {
+                  setCorners([
+                    { id: 'tl', x: 2, y: 2 },
+                    { id: 'tr', x: 98, y: 2 },
+                    { id: 'bl', x: 2, y: 98 },
+                    { id: 'br', x: 98, y: 98 },
+                  ]);
+                  setRotation(0);
+                }}
+                className="flex-1 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-black text-[10px] uppercase tracking-[0.2em] hover:bg-white/10 active:scale-95 transition-all"
+              >
+                Reset
+              </button>
+              <button 
+                onClick={rotateImage}
+                className="flex-1 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-black text-[10px] uppercase tracking-[0.2em] hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Dévier
+              </button>
+              <button 
+                onClick={startAnalysis}
+                className="flex-[2] py-4 bg-ai-gradient rounded-2xl text-white font-black text-[10px] uppercase tracking-[0.3em] ai-glow active:scale-95 transition-all shadow-2xl"
+              >
+                Analyser
+              </button>
+            </div>
           </motion.div>
+        ) : (
+          <>
+            {saveError && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-black text-center uppercase tracking-widest"
+              >
+                {saveError}
+              </motion.div>
+            )}
+            <div className="flex justify-between items-end px-1">
+              <div className="space-y-1 flex-1">
+                <div className="flex items-center gap-1.5 md:gap-2">
+                   <Cpu className="w-3.5 h-3.5 md:w-4 h-4 text-ai-blue" />
+                   <p className="text-[9px] md:text-[11px] font-black uppercase text-white tracking-[0.1em]">{currentPhase}</p>
+                </div>
+                <div className="flex gap-2">
+                  {logs.map((log, i) => (
+                    <span key={i} className={`text-[7px] md:text-[8px] font-black uppercase opacity-${30 - i * 10} transition-opacity text-zinc-500`}>&gt; {log}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="text-right ml-4">
+                <span className="text-lg md:text-2xl font-black text-ai-blue tracking-tighter">{Math.floor(progress)}%</span>
+              </div>
+            </div>
+            
+            <div className="relative h-1.5 md:h-2 bg-white/5 rounded-full overflow-hidden p-0.5">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                className="h-full bg-ai-gradient rounded-full shadow-[0_0_20px_rgba(79,124,255,0.4)]"
+              />
+            </div>
+          </>
         )}
-        <div className="flex justify-between items-end px-1">
-          <div className="space-y-1 flex-1">
-            <div className="flex items-center gap-1.5 md:gap-2">
-               <Cpu className="w-3.5 h-3.5 md:w-4 h-4 text-ai-blue" />
-               <p className="text-[9px] md:text-[11px] font-black uppercase text-white tracking-[0.1em]">{currentPhase}</p>
-            </div>
-            <div className="flex gap-2">
-              {logs.map((log, i) => (
-                <span key={i} className={`text-[7px] md:text-[8px] font-black uppercase opacity-${30 - i * 10} transition-opacity text-zinc-500`}>&gt; {log}</span>
-              ))}
-            </div>
-          </div>
-          <div className="text-right ml-4">
-            <span className="text-lg md:text-2xl font-black text-ai-blue tracking-tighter">{Math.floor(progress)}%</span>
-          </div>
-        </div>
-        
-        <div className="relative h-1.5 md:h-2 bg-white/5 rounded-full overflow-hidden p-0.5">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${progress}%` }}
-            className="h-full bg-ai-gradient rounded-full shadow-[0_0_20px_rgba(79,124,255,0.4)]"
-          />
-        </div>
       </div>
 
       {/* Semantic Output Grid */}

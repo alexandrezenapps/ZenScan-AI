@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, SlidersHorizontal, FileText, X, Sparkles, Download, Share2, Trash2, Calendar, FileType, HardDrive, Tag, Plus, CheckCircle2, Loader2, ZoomIn, ZoomOut, Maximize, LayoutGrid, List, Mail } from 'lucide-react';
+import { Search, SlidersHorizontal, FileText, X, Sparkles, Download, Share2, Trash2, Calendar, FileType, HardDrive, Tag, Plus, CheckCircle2, Loader2, ZoomIn, ZoomOut, Maximize, LayoutGrid, List, Mail, Languages, Printer, Copy, ExternalLink } from 'lucide-react';
 import { AppView, DocumentMetadata } from '../types';
 import { GlassCard, AIOrb, PrimaryButton, AIChip } from '../components/PremiumComponents';
 import { DURATIONS, EASINGS } from '../lib/animations';
@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext';
 
 // Memoized Document Card for performance
 const DocumentCard = React.memo(({ scan, idx, onClick }: { scan: DocumentMetadata, idx: number, onClick: (doc: DocumentMetadata) => void }) => {
+  const displayUrl = scan.thumbnailUrl || scan.url;
   return (
     <FadeScale delay={idx * 30}>
       <div
@@ -22,9 +23,9 @@ const DocumentCard = React.memo(({ scan, idx, onClick }: { scan: DocumentMetadat
         className="group relative bg-primary-800/40 border border-white/5 rounded-2xl md:rounded-[28px] overflow-hidden hover:border-ai-blue/30 transition-all duration-300 hover:shadow-2xl glass-card p-5 md:p-6 flex flex-col gap-4 cursor-pointer"
       >
         <div className="h-40 md:h-48 rounded-xl md:rounded-[18px] bg-primary-700/30 flex items-center justify-center overflow-hidden border border-white/5 relative group">
-          {scan.url ? (
+          {displayUrl && (scan.type !== 'PDF' || scan.thumbnailUrl) ? (
             <img 
-              src={scan.url} 
+              src={displayUrl} 
               alt={scan.name} 
               referrerPolicy="no-referrer"
               className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
@@ -35,7 +36,7 @@ const DocumentCard = React.memo(({ scan, idx, onClick }: { scan: DocumentMetadat
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center opacity-10 group-hover:scale-110 transition-transform duration-500">
-              <FileText className="w-16 h-16 md:w-20 md:h-20" />
+              <FileText className="w-16 h-16 md:w-20 md:h-20 text-ai-blue" />
             </div>
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-primary-800/80 via-transparent to-transparent opacity-60"></div>
@@ -46,38 +47,50 @@ const DocumentCard = React.memo(({ scan, idx, onClick }: { scan: DocumentMetadat
           )}
         </div>
         <div className="flex justify-between items-start">
-          <div className="space-y-1">
-            <h3 className="font-bold text-base md:text-lg text-text-main leading-tight group-hover:text-ai-blue transition-colors truncate">{scan.name}</h3>
-            <div className="flex items-center gap-2 text-[9px] md:text-xs text-zinc-500 tracking-widest font-black uppercase">
-              <span>{scan.type}</span>
-              <span className="w-1 h-1 rounded-full bg-zinc-700"></span>
-              <span>{scan.size}</span>
+          <div className="space-y-2">
+            <div className="space-y-1">
+              <h3 className="font-bold text-base md:text-lg text-text-main leading-tight group-hover:text-ai-blue transition-colors truncate">{scan.name}</h3>
+              <div className="flex items-center gap-2 text-[9px] md:text-xs text-zinc-500 tracking-widest font-black uppercase">
+                <span>{scan.type}</span>
+                <span className="w-1 h-1 rounded-full bg-zinc-700"></span>
+                <span>{scan.size}</span>
+              </div>
             </div>
+            {scan.tags && scan.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 md:gap-2">
+                {scan.tags.slice(0, 2).map((tag, i) => (
+                  <span key={`${tag}-${i}`} className="text-[8px] md:text-[10px] font-black text-ai-blue/70 bg-ai-blue/5 border border-ai-blue/10 px-2 py-0.5 rounded md:rounded-md uppercase tracking-tighter">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-        {scan.tags && scan.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 md:gap-2 mt-1">
-            {scan.tags.slice(0, 2).map((tag, i) => (
-              <span key={`${tag}-${i}`} className="text-[8px] md:text-[10px] font-black text-ai-blue/70 bg-ai-blue/5 border border-ai-blue/10 px-2 py-0.5 rounded md:rounded-md uppercase tracking-tighter">
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
     </FadeScale>
   );
 });
 
 const DocumentListItem = React.memo(({ scan, idx, onClick }: { scan: DocumentMetadata, idx: number, onClick: (doc: DocumentMetadata) => void }) => {
+  const displayUrl = scan.thumbnailUrl || scan.url;
   return (
     <FadeScale delay={idx * 20}>
       <div 
         onClick={() => onClick(scan)}
         className="group flex items-center gap-4 p-4 md:p-5 bg-primary-800/40 border border-white/5 rounded-2xl md:rounded-[24px] hover:border-ai-blue/30 transition-all duration-300 glass-card cursor-pointer"
       >
-        <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl bg-primary-700/30 flex items-center justify-center flex-shrink-0 group-hover:bg-ai-blue/10 transition-colors">
-          <FileText className="w-6 h-6 md:w-8 md:h-8 text-zinc-500 group-hover:text-ai-blue transition-colors" />
+        <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl bg-primary-700/30 flex items-center justify-center flex-shrink-0 group-hover:bg-ai-blue/10 transition-colors overflow-hidden">
+          {displayUrl && (scan.type !== 'PDF' || scan.thumbnailUrl) ? (
+            <img 
+              src={displayUrl} 
+              alt={scan.name} 
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover transition-transform duration-500" 
+            />
+          ) : (
+            <FileText className="w-6 h-6 md:w-8 md:h-8 text-zinc-500 group-hover:text-ai-blue transition-colors" />
+          )}
         </div>
         
         <div className="flex-1 min-w-0 space-y-1">
@@ -215,15 +228,46 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
     localStorage.setItem('zenScanLibraryDisplay', mode);
   };
 
-  const filteredDocuments = useMemo(() => {
-    return documents.filter(doc => {
-      const matchesCategory = selectedCategories.length === 0 || 
-                             (doc.category && selectedCategories.includes(doc.category)) || 
-                             (doc.tags && selectedCategories.some(cat => doc.tags.includes(cat)));
-      const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          doc.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesCategory && matchesSearch;
+  const handleCopyContent = () => {
+    if (!selectedDoc) return;
+    
+    let textToCopy = `DOCUMENT : ${selectedDoc.name}\n\n`;
+    if (selectedDoc.contentSnippet) {
+      textToCopy += `ANALYSE IA :\n${selectedDoc.contentSnippet}\n\n`;
+    }
+    
+    if (selectedDoc.extractedData) {
+      textToCopy += `DONNÉES EXTRAITES :\n`;
+      Object.entries(selectedDoc.extractedData).forEach(([key, value]) => {
+        textToCopy += `${key} : ${value}\n`;
+      });
+    }
+
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      alert('Contenu copié dans le presse-papiers !');
     });
+  };
+
+  const handlePrint = () => {
+    if (selectedDoc?.url) {
+      const printWindow = window.open(selectedDoc.url, '_blank');
+      if (printWindow) {
+        printWindow.print();
+      }
+    }
+  };
+
+  const filteredDocuments = useMemo(() => {
+    return [...documents]
+      .filter(doc => {
+        const matchesCategory = selectedCategories.length === 0 || 
+                               (doc.category && selectedCategories.includes(doc.category)) || 
+                               (doc.tags && selectedCategories.some(cat => doc.tags.includes(cat)));
+        const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                            doc.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
+        return matchesCategory && matchesSearch;
+      })
+      .sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime());
   }, [documents, selectedCategories, searchQuery]);
 
   return (
@@ -536,6 +580,20 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent p-5 md:p-6 flex items-end z-30 pointer-events-none">
                     <div className="flex gap-4 pointer-events-auto">
                       <button 
+                        onClick={() => window.open(selectedDoc.url, '_blank')}
+                        className="w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-white/90 backdrop-blur-md flex items-center justify-center text-black shadow-lg hover:scale-110 active:scale-95 transition-all"
+                        title="Ouvrir dans un nouvel onglet"
+                      >
+                        <ExternalLink className="w-4 h-4 md:w-5 md:h-5" />
+                      </button>
+                      <button 
+                        onClick={handlePrint}
+                        className="w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-white/90 backdrop-blur-md flex items-center justify-center text-black shadow-lg hover:scale-110 active:scale-95 transition-all"
+                        title="Imprimer"
+                      >
+                        <Printer className="w-4 h-4 md:w-5 md:h-5" />
+                      </button>
+                      <button 
                         onClick={() => {
                           const link = document.createElement('a');
                           link.href = selectedDoc.url || '#';
@@ -551,15 +609,18 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                       </button>
                       <button 
                         onClick={() => {
+                          const docName = selectedDoc.name;
+                          const shareText = `Document ZenScan: ${docName}${selectedDoc.type ? ` (${selectedDoc.type})` : ''}${selectedDoc.contentSnippet ? `\n\nRésumé IA: "${selectedDoc.contentSnippet.slice(0, 100)}..."` : ''}`;
+                          
                           if (navigator.share) {
                             navigator.share({
-                              title: selectedDoc.name,
-                              text: `Check out this document: ${selectedDoc.name}`,
+                              title: docName,
+                              text: shareText,
                               url: selectedDoc.url || window.location.href,
                             }).catch(console.error);
                           } else {
                             navigator.clipboard.writeText(selectedDoc.url || window.location.href);
-                            alert('Lien de partage copié !');
+                            alert('Lien de partage copié dans le presse-papiers !');
                           }
                         }}
                         className="w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-white/90 backdrop-blur-md flex items-center justify-center text-black shadow-lg hover:scale-110 active:scale-95 transition-all"
@@ -569,8 +630,25 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                       </button>
                       <button 
                         onClick={() => {
-                          const subject = encodeURIComponent(`Document: ${selectedDoc.name}`);
-                          const body = encodeURIComponent(`Bonjour,\n\nVoici le document "${selectedDoc.name}" que je souhaite partager.\n\nLien: ${window.location.href}`);
+                          const docName = selectedDoc.name;
+                          const subject = encodeURIComponent(`Document ZenScan : ${docName}`);
+                          const docLink = window.location.origin + window.location.pathname + (selectedDoc.id ? `#doc=${selectedDoc.id}` : "");
+                          
+                          const body = encodeURIComponent(
+                            `Bonjour,\n\n` +
+                            `Je partage avec vous ce document géré via ZenScan AI.\n\n` +
+                            `📌 FICHE DOCUMENTAIRE\n` +
+                            `-------------------------------------------\n` +
+                            `• Objet : ${docName}\n` +
+                            `• Format : ${selectedDoc.type}\n` +
+                            `• Modifié le : ${selectedDoc.modifiedAt.toLocaleDateString()}\n` +
+                            `• Catégorie : ${selectedDoc.category || 'Non classé'}\n` +
+                            `${selectedDoc.tags && selectedDoc.tags.length > 0 ? `• Tags : ${selectedDoc.tags.join(', ')}\n` : ''}` +
+                            `${selectedDoc.contentSnippet ? `\n🔍 EXTRAIT D'ANALYSE IA :\n"${selectedDoc.contentSnippet.slice(0, 300)}..."\n` : ''}` +
+                            `\n🔗 LIEN D'ACCÈS :\n${docLink}\n\n` +
+                            `-------------------------------------------\n` +
+                            `Généré automatiquement par l'intelligence documentaire ZenScan.`
+                          );
                           window.location.href = `mailto:?subject=${subject}&body=${body}`;
                         }}
                         className="w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-white/90 backdrop-blur-md flex items-center justify-center text-black shadow-lg hover:scale-110 active:scale-95 transition-all"
@@ -603,6 +681,12 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                         <Calendar className="w-3.5 h-3.5 text-ai-blue" />
                         <span>{selectedDoc.modifiedAt.toLocaleDateString()}</span>
                       </div>
+                      {selectedDoc.ocrLanguage && (
+                        <div className="flex items-center gap-2">
+                          <Languages className="w-3.5 h-3.5 text-ai-blue" />
+                          <span>{selectedDoc.ocrLanguage}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -610,7 +694,18 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                   <GlassCard glow className="p-6 md:p-8 border-ai-blue/10 bg-ai-blue/[0.02]">
                     <div className="flex items-center gap-3 mb-3 md:mb-4">
                       <AIOrb size="w-7 h-7 md:w-8 md:h-8" />
-                      <h4 className="text-sm md:text-base text-text-main font-bold tracking-tight">Analyse Zen Vision</h4>
+                      <div className="flex-1">
+                        <h4 className="text-sm md:text-base text-text-main font-bold tracking-tight">Analyse Zen Vision</h4>
+                      </div>
+                      {selectedDoc.contentSnippet && (
+                        <button 
+                          onClick={handleCopyContent}
+                          className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-ai-blue transition-all"
+                          title="Copier le texte"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                     <p className="text-xs md:text-sm text-zinc-400 leading-relaxed italic font-medium">
                       "{selectedDoc.contentSnippet || "Analyse en attente d'indexation complète..."}"
@@ -709,6 +804,13 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                     >
                       <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
                       Supprimer
+                    </button>
+                    <button 
+                      onClick={handleCopyContent}
+                      className="col-span-2 h-12 md:h-14 rounded-xl md:rounded-[18px] bg-white/5 border border-white/10 text-white font-bold text-xs md:text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition-all active:scale-95"
+                    >
+                      <Copy className="w-4 h-4 md:w-5 md:h-5 text-ai-blue" />
+                      Copier les informations
                     </button>
                   </div>
                 </div>

@@ -5,27 +5,62 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Bolt, Zap, Camera, Image as ImageIcon, RotateCcw, Settings, Layers, RefreshCw } from 'lucide-react';
+import { X, Bolt, Zap, Camera, Image as ImageIcon, RotateCcw, Settings, Layers, RefreshCw, Languages } from 'lucide-react';
 import { AppView, ScanStatus } from '../types';
 import { GlassCard } from '../components/PremiumComponents';
 
 interface ScannerProps {
   onNavigate: (view: AppView) => void;
-  onScanComplete: (imageData?: string) => void;
+  onScanComplete: (imageData?: string, language?: string) => void;
 }
 
 export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
   const [status, setStatus] = useState<ScanStatus>(ScanStatus.IDLE);
   const [activeMode, setActiveMode] = useState('DOCUMENT');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('Français');
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  const [isAutoMode, setIsAutoMode] = useState(true);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showFlash, setShowFlash] = useState(false);
   const [hasCameraAccess, setHasCameraAccess] = useState<boolean | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
+  const [isDocumentDetected, setIsDocumentDetected] = useState(false);
+  const [detectionProgress, setDetectionProgress] = useState(0);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const shutterSoundRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Simulated Document Detection
+  useEffect(() => {
+    if (status !== ScanStatus.IDLE || !hasCameraAccess) {
+      setIsDocumentDetected(false);
+      setDetectionProgress(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      // Logic: If user is steady (simulated by random), detect "edges"
+      const detected = Math.random() > 0.3;
+      setIsDocumentDetected(detected);
+      
+      if (detected) {
+        setDetectionProgress(prev => {
+          const next = prev + 15;
+          if (next >= 100 && isAutoMode && countdown === null) {
+            setCountdown(2); // Start 2s countdown for auto-capture
+          }
+          return Math.min(next, 100);
+        });
+      } else {
+        setDetectionProgress(prev => Math.max(0, prev - 20));
+        if (countdown !== null) setCountdown(null);
+      }
+    }, 400);
+
+    return () => clearInterval(interval);
+  }, [status, hasCameraAccess, isAutoMode, countdown]);
 
   useEffect(() => {
     // Preload shutter sound
@@ -39,6 +74,8 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
+    setIsDocumentDetected(false);
+    setDetectionProgress(0);
   };
 
   const startCamera = async () => {
@@ -76,6 +113,20 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
     startCamera();
     return () => stopCamera();
   }, [facingMode]);
+
+    const languages = [
+      { name: 'Français', code: 'FR', flag: '🇫🇷' },
+      { name: 'English', code: 'EN', flag: '🇬🇧' },
+      { name: 'Español', code: 'ES', flag: '🇪🇸' },
+      { name: 'Deutsch', code: 'DE', flag: '🇩🇪' },
+      { name: 'Italiano', code: 'IT', flag: '🇮🇹' },
+    ];
+  
+  useEffect(() => {
+    const handleRemoteScan = () => startScan();
+    window.addEventListener('zen-trigger-scan', handleRemoteScan);
+    return () => window.removeEventListener('zen-trigger-scan', handleRemoteScan);
+  }, [status, selectedLanguage]); // Dependencies for startScan context
 
   const modes = ['OCR', 'DOCUMENT', 'ID CARD', 'RECEIPT'];
 
@@ -151,7 +202,7 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
       setShowFlash(false);
       
       if (img && img.startsWith('data:image/jpeg;base64,') && img.length > 1000) { 
-        onScanComplete(img);
+        onScanComplete(img, selectedLanguage);
       } else {
         console.error("Capture failed: Image too small or invalid", img ? img.length : 0);
         setStatus(ScanStatus.IDLE);
@@ -162,13 +213,15 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
   };
 
   useEffect(() => {
-    if (status === ScanStatus.IDLE) {
+    if (status === ScanStatus.IDLE && isAutoMode) {
       const detectTimer = setTimeout(() => {
         setCountdown(3);
       }, 1500);
       return () => clearTimeout(detectTimer);
+    } else if (!isAutoMode) {
+      setCountdown(null);
     }
-  }, [status]);
+  }, [status, isAutoMode]);
 
   useEffect(() => {
     if (countdown !== null && countdown > 0) {
@@ -223,14 +276,62 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
         </button>
         
         <div className="flex flex-col items-center">
-            <div className="flex items-center gap-2 mb-1">
-              <Layers className="w-3 h-3 text-ai-blue" />
-              <span className="text-[10px] font-black text-white/50 uppercase tracking-[0.4em]">{activeMode}</span>
+            {/* Language Selector in Header */}
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setIsAutoMode(!isAutoMode)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all mb-1 ${
+                  isAutoMode ? 'bg-ai-blue/20 border-ai-blue text-ai-blue' : 'bg-white/10 border-white/10 text-white/40'
+                }`}
+              >
+                <Zap className={`w-3 h-3 ${isAutoMode ? 'fill-current' : ''}`} />
+                <span className="text-[10px] font-black uppercase tracking-wider">{isAutoMode ? 'AUTO' : 'MANUEL'}</span>
+              </button>
+
+              <div className="relative">
+                <button 
+                  onClick={() => setShowLanguageSelector(!showLanguageSelector)}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full border border-white/10 hover:bg-white/20 transition-all mb-1"
+                >
+                  <Languages className="w-3 h-3 text-ai-blue" />
+                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">{selectedLanguage.slice(0, 3)}</span>
+                </button>
+                
+                <AnimatePresence>
+                  {showLanguageSelector && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-primary-900/90 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl p-2 z-[110]"
+                    >
+                      {languages.map(lang => (
+                        <button
+                          key={lang.code}
+                          onClick={() => {
+                            setSelectedLanguage(lang.name);
+                            setShowLanguageSelector(false);
+                          }}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                            selectedLanguage === lang.name ? 'bg-ai-blue text-white' : 'text-zinc-400 hover:bg-white/5'
+                          }`}
+                        >
+                          <span>{lang.flag}</span>
+                          <span>{lang.name}</span>
+                          {selectedLanguage === lang.name && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_8px_white]" />}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
+
             <div className="flex gap-1.5">
               <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.5, repeat: Infinity }} className="w-1 h-1 rounded-full bg-ai-blue shadow-[0_0_8px_#4F7CFF]" />
               <div className="w-1 h-1 rounded-full bg-white/20" />
             </div>
+            <span className="text-[7px] font-bold text-white/40 uppercase tracking-[0.2em] mt-1">PDF MODE</span>
         </div>
 
         <button 
@@ -287,10 +388,22 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
         {/* Framing Overlay */}
         <div className={`relative w-[85%] max-w-sm transition-all duration-700 ease-[0.22,1,0.36,1] ${currentConfig.aspect}`}>
           {/* Advanced Corners */}
-          <div className="absolute -top-1 -left-1 w-16 h-16 border-t-[5px] border-l-[5px] border-ai-blue rounded-tl-[40px] ai-glow" />
-          <div className="absolute -top-1 -right-1 w-16 h-16 border-t-[5px] border-r-[5px] border-ai-blue rounded-tr-[40px] ai-glow" />
-          <div className="absolute -bottom-1 -left-1 w-16 h-16 border-b-[5px] border-l-[5px] border-ai-blue rounded-bl-[40px] ai-glow" />
-          <div className="absolute -bottom-1 -right-1 w-16 h-16 border-b-[5px] border-r-[5px] border-ai-blue rounded-br-[40px] ai-glow" />
+          <div className={`absolute -top-1 -left-1 w-16 h-16 border-t-[5px] border-l-[5px] rounded-tl-[40px] transition-colors duration-500 ${isDocumentDetected && detectionProgress > 50 ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)]' : 'border-ai-blue ai-glow'}`} />
+          <div className={`absolute -top-1 -right-1 w-16 h-16 border-t-[5px] border-r-[5px] rounded-tr-[40px] transition-colors duration-500 ${isDocumentDetected && detectionProgress > 50 ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)]' : 'border-ai-blue ai-glow'}`} />
+          <div className={`absolute -bottom-1 -left-1 w-16 h-16 border-b-[5px] border-l-[5px] rounded-bl-[40px] transition-colors duration-500 ${isDocumentDetected && detectionProgress > 50 ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)]' : 'border-ai-blue ai-glow'}`} />
+          <div className={`absolute -bottom-1 -right-1 w-16 h-16 border-b-[5px] border-r-[5px] rounded-br-[40px] transition-colors duration-500 ${isDocumentDetected && detectionProgress > 50 ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)]' : 'border-ai-blue ai-glow'}`} />
+
+          {/* Detection Pulse Overlay */}
+          <AnimatePresence>
+            {isDocumentDetected && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-emerald-500 rounded-[40px] z-0"
+              />
+            )}
+          </AnimatePresence>
 
           {/* Center Guide Label */}
           <div className="absolute -top-28 left-0 right-0 text-center">
@@ -312,18 +425,25 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
                   animate={{ opacity: 1, y: 0 }}
                   className="space-y-3"
                 >
-                  <p className="text-white font-bold text-lg tracking-tight">{currentConfig.label}</p>
+                  <p className={`font-bold text-lg tracking-tight transition-colors ${isDocumentDetected && detectionProgress > 80 ? 'text-emerald-400' : 'text-white'}`}>
+                    {isDocumentDetected ? currentConfig.instruction : currentConfig.label}
+                  </p>
                   <div className="flex items-center justify-center gap-2">
                     <motion.div 
                       animate={{ scaleX: [0, 1, 0] }}
                       transition={{ duration: 2, repeat: Infinity }}
-                      className="w-12 h-0.5 bg-ai-blue/30"
+                      className={`w-12 h-0.5 transition-colors ${isDocumentDetected ? 'bg-emerald-500/50' : 'bg-ai-blue/30'}`}
                     />
-                    <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.5em]">Stabilisation</span>
+                    <div className="relative h-1 w-24 bg-white/10 rounded-full overflow-hidden">
+                      <motion.div 
+                        animate={{ width: `${detectionProgress}%` }}
+                        className={`absolute inset-0 transition-colors ${detectionProgress >= 100 ? 'bg-emerald-500' : 'bg-ai-blue'}`}
+                      />
+                    </div>
                     <motion.div 
                       animate={{ scaleX: [0, 1, 0] }}
                       transition={{ duration: 2, repeat: Infinity }}
-                      className="w-12 h-0.5 bg-ai-blue/30"
+                      className={`w-12 h-0.5 transition-colors ${isDocumentDetected ? 'bg-emerald-500/50' : 'bg-ai-blue/30'}`}
                     />
                   </div>
                 </motion.div>
@@ -382,7 +502,7 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
                   if (file) {
                     const reader = new FileReader();
                     reader.onloadend = () => {
-                      onScanComplete(reader.result as string);
+                      onScanComplete(reader.result as string, selectedLanguage);
                     };
                     reader.readAsDataURL(file);
                   }

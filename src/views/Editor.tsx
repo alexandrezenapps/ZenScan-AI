@@ -30,32 +30,32 @@ function ExportModal({ isOpen, onClose, document, pagesCount }: ExportModalProps
   const handleDownloadPDF = async () => {
     setIsGenerating(true);
     try {
-      const doc = new jsPDF();
-      doc.setFontSize(22);
-      doc.text("ZENSCAN DOCUMENT", 20, 20);
-      doc.setFontSize(10);
-      doc.text(`Date: ${new Date().toLocaleString()}`, 20, 30);
-      doc.text(`Filename: ${fileName}`, 20, 35);
-      
-      doc.setDrawColor(79, 124, 255);
-      doc.line(20, 40, 190, 40);
-      
-      doc.setFontSize(12);
-      doc.text(`Contenu du document "${document?.name}" exporté via ZenScan Intelligence.`, 20, 50);
-      
-      if (document?.contentSnippet) {
-        doc.setFontSize(10);
-        doc.text("Aperçu de l'extraction :", 20, 70);
-        const splitText = doc.splitTextToSize(document.contentSnippet, 170);
-        doc.text(splitText, 20, 80);
-      }
-      
-      // Simulating some content structure
-      doc.setFontSize(10);
-      doc.setTextColor(150);
-      doc.text("ZenScan AI Extraction - Confidential", 20, 280);
+      if (document?.url && (document.type === 'PDF' || document.url.startsWith('data:application/pdf'))) {
+        // If it's already a PDF, download it directly
+        const link = window.document.createElement('a');
+        link.href = document.url;
+        link.download = `${fileName}.pdf`;
+        window.document.body.appendChild(link);
+        link.click();
+        window.document.body.removeChild(link);
+      } else {
+        // Fallback or generate a summary PDF if requested for other types
+        const doc = new jsPDF();
+        doc.setFontSize(22);
+        doc.text("ZENSCAN DOCUMENT", 20, 20);
+        
+        if (document?.url) {
+          try {
+            // If it's an image, we can add it to the PDF
+            doc.addImage(document.url, 'JPEG', 20, 40, 170, 220);
+          } catch (e) {
+            console.warn("Could not add image to PDF", e);
+            doc.text("Aperçu de l'image indisponible dans l'export.", 20, 40);
+          }
+        }
 
-      doc.save(`${fileName}.pdf`);
+        doc.save(`${fileName}.pdf`);
+      }
     } catch (err) {
       console.error('PDF Generation failed', err);
     } finally {
@@ -66,10 +66,13 @@ function ExportModal({ isOpen, onClose, document, pagesCount }: ExportModalProps
 
   const handleShare = async () => {
     if (navigator.share) {
+      const docName = document?.name || 'Document ZenScan';
+      const shareText = `Document ZenScan: ${docName}${document?.type ? ` (${document.type})` : ''}${document?.contentSnippet ? `\n\nRésumé IA: "${document.contentSnippet.slice(0, 100)}..."` : ''}`;
+      
       try {
         await navigator.share({
-          title: document?.name || 'Document ZenScan',
-          text: `Document ZenScan: ${document?.name}`,
+          title: docName,
+          text: shareText,
           url: window.location.href,
         });
       } catch (err) {
@@ -88,13 +91,13 @@ function ExportModal({ isOpen, onClose, document, pagesCount }: ExportModalProps
 
   const handleEmail = () => {
     const docName = document?.name || "Sans titre";
-    const subject = encodeURIComponent(`Partage de Document : ${docName}`);
+    const subject = encodeURIComponent(`Document ZenScan : ${docName}`);
     const docLink = window.location.origin + window.location.pathname + (document?.id ? `#doc=${document.id}` : "");
     
     const body = encodeURIComponent(
       `Bonjour,\n\n` +
-      `Je souhaite partager avec vous le document suivant, numérisé et analysé avec l'intelligence artificielle ZenScan.\n\n` +
-      `📌 INFORMATIONS DU DOCUMENT\n` +
+      `Veuillez trouver ci-joint les informations concernant le document suivant, traité par l'intelligence ZenScan.\n\n` +
+      `📌 FICHE ANALYTIQUE\n` +
       `-------------------------------------------\n` +
       `• Nom : ${docName}\n` +
       `• Date : ${document?.createdAt ? new Date(document.createdAt).toLocaleDateString() : new Date().toLocaleDateString()}\n` +
@@ -102,10 +105,10 @@ function ExportModal({ isOpen, onClose, document, pagesCount }: ExportModalProps
       `• Catégorie : ${document?.category || 'Non classé'}\n` +
       `• Pages : ${pagesCount}\n` +
       `${document?.tags && document.tags.length > 0 ? `• Tags : ${document.tags.join(', ')}\n` : ''}` +
-      `${document?.contentSnippet ? `\n🔍 ANALYSE DE L'IA (EXTRAIT) :\n"${document.contentSnippet.slice(0, 300)}..."\n` : ''}` +
-      `\n🔗 ACCÈS AU DOCUMENT :\n${docLink}\n\n` +
+      `${document?.contentSnippet ? `\n🔍 EXTRAIT DE L'EXTRACTION IA :\n"${document.contentSnippet.slice(0, 300)}..."\n` : ''}` +
+      `\n🔗 ACCÈS AU DOCUMENT EN LIGNE :\n${docLink}\n\n` +
       `-------------------------------------------\n` +
-      `Généré avec ZenScan Intelligence - La gestion documentaire nouvelle génération.`
+      `ZenScan AI - Votre Assistant Documentaire Intelligent.`
     );
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   };
@@ -348,12 +351,12 @@ export default function Editor({ onNavigate, document }: EditorProps) {
             <button 
               onClick={() => {
                 const docName = document?.name || "Sans titre";
-                const subject = encodeURIComponent(`Partage de Document : ${docName}`);
+                const subject = encodeURIComponent(`Document ZenScan : ${docName}`);
                 const docLink = window.location.origin + window.location.pathname + (document?.id ? `#doc=${document.id}` : "");
                 const body = encodeURIComponent(
                   `Bonjour,\n\n` +
-                  `Je souhaite partager avec vous le document suivant, numérisé et analysé avec l'intelligence artificielle ZenScan.\n\n` +
-                  `📌 INFORMATIONS DU DOCUMENT\n` +
+                  `Veuillez trouver ci-joint les informations concernant le document suivant, traité par l'intelligence ZenScan.\n\n` +
+                  `📌 FICHE ANALYTIQUE\n` +
                   `-------------------------------------------\n` +
                   `• Nom : ${docName}\n` +
                   `• Date : ${document?.createdAt ? new Date(document.createdAt).toLocaleDateString() : new Date().toLocaleDateString()}\n` +
@@ -361,10 +364,10 @@ export default function Editor({ onNavigate, document }: EditorProps) {
                   `• Catégorie : ${document?.category || 'Non classé'}\n` +
                   `• Pages : ${pages.length}\n` +
                   `${document?.tags && document.tags.length > 0 ? `• Tags : ${document.tags.join(', ')}\n` : ''}` +
-                  `${document?.contentSnippet ? `\n🔍 ANALYSE DE L'IA (EXTRAIT) :\n"${document.contentSnippet.slice(0, 300)}..."\n` : ''}` +
-                  `\n🔗 ACCÈS AU DOCUMENT :\n${docLink}\n\n` +
+                  `${document?.contentSnippet ? `\n🔍 EXTRAIT DE L'EXTRACTION IA :\n"${document.contentSnippet.slice(0, 300)}..."\n` : ''}` +
+                  `\n🔗 ACCÈS AU DOCUMENT EN LIGNE :\n${docLink}\n\n` +
                   `-------------------------------------------\n` +
-                  `Généré avec ZenScan Intelligence - La gestion documentaire nouvelle génération.`
+                  `ZenScan AI - Votre Assistant Documentaire Intelligent.`
                 );
                 window.location.href = `mailto:?subject=${subject}&body=${body}`;
               }}
@@ -420,16 +423,26 @@ export default function Editor({ onNavigate, document }: EditorProps) {
               className="bg-white w-full max-w-[320px] md:max-w-[420px] aspect-[1/1.41] shadow-[0_40px_70px_rgba(0,0,0,0.4)] rounded-sm overflow-hidden relative"
             >
               {document?.url ? (
-                <img 
-                  src={document.url} 
-                  alt="Scanned Document" 
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-contain"
-                  onError={(e) => {
-                    console.error("Editor Image loading error");
-                    (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1586769852044-692d6e3703f0?q=80&w=800&auto=format&fit=crop";
-                  }}
-                />
+                document.type === 'PDF' || document.url.startsWith('data:application/pdf') ? (
+                  <div className="w-full h-full bg-white flex flex-col">
+                    <iframe 
+                      src={document.url} 
+                      className="w-full h-full border-none"
+                      title="PDF Preview"
+                    />
+                  </div>
+                ) : (
+                  <img 
+                    src={document.url} 
+                    alt="Scanned Document" 
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-contain"
+                    onError={(e) => {
+                      console.error("Editor Image loading error");
+                      (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1586769852044-692d6e3703f0?q=80&w=800&auto=format&fit=crop";
+                    }}
+                  />
+                )
               ) : (
                 <div className="p-6 md:p-10 space-y-4 md:space-y-6 opacity-80 select-none bg-zinc-50 h-full">
                   <div className="flex justify-between items-start">

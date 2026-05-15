@@ -30,10 +30,10 @@ service cloud.firestore {
 
     // Validation Blueprints
     function isValidUser(data) {
-      return data.uid == request.auth.uid
+      return data.get('uid', request.auth.uid) == request.auth.uid
         && (data.get('email', '') == null || data.get('email', '') is string)
-        && data.get('displayName', '') is string
-        && data.get('photoURL', '') is string;
+        && (data.get('displayName', '') == null || data.get('displayName', '') is string)
+        && (data.get('photoURL', '') == null || data.get('photoURL', '') is string);
     }
 
     function isValidDocument(data) {
@@ -42,7 +42,9 @@ service cloud.firestore {
         && data.name is string
         && data.type in ['PDF', 'JPG', 'PNG', 'JPEG']
         && data.tags is list
-        && data.isAiEnhanced is bool;
+        && data.isAiEnhanced is bool
+        && (data.get('ocrLanguage', '') == null || data.get('ocrLanguage', '') is string)
+        && (data.get('thumbnailUrl', '') == null || data.get('thumbnailUrl', '') is string);
     }
 
     // Collection Rules
@@ -61,8 +63,7 @@ service cloud.firestore {
           // Action: Profile Update
           (
             incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt']) &&
-            incoming().uid == existing().uid &&
-            incoming().updatedAt == request.time
+            incoming().get('updatedAt', request.time) == request.time
           )
         );
 
@@ -85,7 +86,7 @@ service cloud.firestore {
           && incoming().createdAt == existing().createdAt
           && incoming().updatedAt == request.time
           && incoming().diff(existing()).affectedKeys().hasOnly([
-            'name', 'category', 'tags', 'isAiEnhanced', 'contentSnippet', 'extractedData', 'updatedAt'
+            'name', 'category', 'tags', 'isAiEnhanced', 'contentSnippet', 'extractedData', 'ocrLanguage', 'thumbnailUrl', 'updatedAt'
           ]);
 
         allow delete: if isOwner(userId) && isValidId(docId);

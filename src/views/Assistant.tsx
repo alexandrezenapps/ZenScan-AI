@@ -32,7 +32,7 @@ export default function Assistant({ onNavigate }: AssistantProps) {
     if (!inputValue.trim()) return;
 
     const userMessage: ChatMessage = {
-      id: Date.now().toString(),
+      id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       role: 'user',
       content: inputValue,
       timestamp: new Date(),
@@ -53,7 +53,7 @@ export default function Assistant({ onNavigate }: AssistantProps) {
       const aiResponse = await chatWithAI(currentInput, history);
       
       const aiMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         role: 'assistant',
         content: aiResponse || "Désolé, je n'ai pas pu générer de réponse.",
         timestamp: new Date(),
