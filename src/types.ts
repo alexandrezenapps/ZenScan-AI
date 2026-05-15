@@ -27,6 +27,11 @@ export interface DocumentMetadata {
   url?: string;
   thumbnailUrl?: string;
   ocrLanguage?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    address?: string;
+  };
 }
 
 export interface ChatMessage {
@@ -37,4 +42,14 @@ export interface ChatMessage {
   type?: 'text' | 'analysis';
 }
 
-export type AppView = 'HOME' | 'LIBRARY' | 'SCANNER' | 'OCR' | 'EDITOR' | 'AI' | 'SETTINGS' | 'ONBOARDING' | 'SPLASH';
+export enum AppView {
+  HOME = 'HOME',
+  LIBRARY = 'LIBRARY',
+  SCANNER = 'SCANNER',
+  OCR = 'OCR',
+  EDITOR = 'EDITOR',
+  AI = 'AI',
+  SETTINGS = 'SETTINGS',
+  ONBOARDING = 'ONBOARDING',
+  SPLASH = 'SPLASH'
+}

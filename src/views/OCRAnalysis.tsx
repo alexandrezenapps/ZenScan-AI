@@ -17,6 +17,7 @@ interface OCRAnalysisProps {
   onComplete: () => void;
   onSelectDocument?: (doc: DocumentMetadata) => void;
   scannedImage?: string | null;
+  scannedLocation?: { latitude: number, longitude: number } | null;
   initialLanguage?: string;
 }
 
@@ -84,7 +85,7 @@ const SemanticItem = React.memo(({ item, isDiscovered, onUpdate }: { item: any, 
   );
 });
 
-export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, scannedImage, initialLanguage }: OCRAnalysisProps) {
+export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, scannedImage, scannedLocation, initialLanguage }: OCRAnalysisProps) {
   // Keep a local copy of the image to prevent it from disappearing during exit animations
   const [localImage, setLocalImage] = useState<string | null>(scannedImage || null);
   const [isEditing, setIsEditing] = useState(true); // Start with editing phase
@@ -366,6 +367,7 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
         ocrLanguage: selectedLanguage,
         url: finalUrl,
         thumbnailUrl: scannedImage || undefined,
+        location: scannedLocation || undefined,
         size: `${Math.round(finalUrl.length / 1024)} KB`,
         modifiedAt: new Date(),
         tags: ['Scan', detectedType, selectedCategory, 'PDF'],

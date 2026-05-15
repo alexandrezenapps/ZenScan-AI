@@ -1,49 +1,59 @@
 {
   "entities": {
-    "User": {
-      "title": "User",
-      "description": "User profile information",
+    "DocumentMetadata": {
+      "title": "Scan Document",
+      "description": "Metadata for a scanned document, including OCR and location data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier" },
+        "userId": { "type": "string", "description": "Owner UID" },
+        "name": { "type": "string", "description": "Document name" },
+        "type": { "type": "string", "enum": ["PDF", "JPG", "PNG"] },
+        "category": { "type": "string" },
+        "size": { "type": "string" },
+        "modifiedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "isAiEnhanced": { "type": "boolean" },
+        "contentSnippet": { "type": "string" },
+        "extractedData": { "type": "object" },
+        "url": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "ocrLanguage": { "type": "string" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "latitude": { "type": "number" },
+            "longitude": { "type": "number" },
+            "address": { "type": "string" }
+          }
+        }
+      },
+      "required": ["id", "name", "type"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Settings and profile info for the user",
       "type": "object",
       "properties": {
         "uid": { "type": "string" },
         "email": { "type": "string" },
         "displayName": { "type": "string" },
-        "photoURL": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "cloudSyncEnabled": { "type": "boolean" },
+        "lastActive": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "email", "createdAt", "updatedAt"]
-    },
-    "Document": {
-      "title": "Document",
-      "description": "Scanned document record",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "name": { "type": "string" },
-        "type": { "type": "string", "enum": ["PDF", "JPG", "PNG"] },
-        "category": { "type": "string" },
-        "size": { "type": "string" },
-        "modifiedAt": { "type": "string", "format": "date-time" },
-        "tags": { "type": "array", "items": { "type": "string" } },
-        "isAiEnhanced": { "type": "boolean" },
-        "contentSnippet": { "type": "string" },
-        "extractedData": { "type": "object" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "userId", "name", "type", "createdAt", "updatedAt"]
+      "required": ["uid"]
     }
   },
   "firestore": {
     "/users/{userId}": {
-      "schema": "User",
-      "description": "Individual user profiles"
+      "schema": "UserProfile",
+      "description": "User profile information"
     },
-    "/users/{userId}/documents/{docId}": {
-      "schema": "Document",
-      "description": "User documents"
+    "/users/{userId}/documents/{documentId}": {
+      "schema": "DocumentMetadata",
+      "description": "User's scanned documents"
     }
   }
 }

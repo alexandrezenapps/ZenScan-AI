@@ -16,20 +16,20 @@ interface BottomNavProps {
 
 export default function BottomNav({ currentView, onNavigate, onScan }: BottomNavProps) {
   const navItemsLeft = [
-    { id: 'HOME', icon: Home, label: 'Accueil' },
-    { id: 'LIBRARY', icon: Library, label: 'Bibliothèque' },
+    { id: AppView.HOME, icon: Home, label: 'Accueil' },
+    { id: AppView.LIBRARY, icon: Library, label: 'Bibliothèque' },
   ];
   
   const navItemsRight = [
-    { id: 'AI', icon: Sparkles, label: 'IA' },
-    { id: 'SETTINGS', icon: Settings, label: 'Paramètres' },
+    { id: AppView.AI, icon: Sparkles, label: 'IA' },
+    { id: AppView.SETTINGS, icon: Settings, label: 'Paramètres' },
   ];
 
   const handleScanClick = () => {
-    if (currentView === 'SCANNER' && onScan) {
+    if (currentView === AppView.SCANNER && onScan) {
       onScan();
     } else {
-      onNavigate('SCANNER');
+      onNavigate(AppView.SCANNER);
     }
   };
 
@@ -62,7 +62,7 @@ export default function BottomNav({ currentView, onNavigate, onScan }: BottomNav
       {/* FAB SCAN */}
       <div className="relative -top-8 px-2 md:px-4 flex flex-col items-center gap-1.5 group">
         <ScanButtonFloating onClick={handleScanClick} />
-        <span className={`text-[8px] md:text-[9px] font-black uppercase tracking-[0.15em] transition-all ${currentView === 'SCANNER' ? 'text-ai-blue opacity-100' : 'text-text-main/40 opacity-0 group-hover:opacity-100'}`}>
+        <span className={`text-[8px] md:text-[9px] font-black uppercase tracking-[0.15em] transition-all ${currentView === AppView.SCANNER ? 'text-ai-blue opacity-100' : 'text-text-main/40 opacity-0 group-hover:opacity-100'}`}>
           Scanner
         </span>
       </div>

@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Crop, RotateCw, Filter, FileText, Check, Save, 
   Download, MoreHorizontal, PenTool, Sparkles, 
   FileSearch, Languages, X, Plus, Trash2, ChevronLeft, ChevronRight,
-  Share2, Mail, Copy, CheckCircle2, FileDown
+  Share2, Mail, Copy, CheckCircle2, FileDown, CloudOff, Cloud, MapPin
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { AppView, DocumentMetadata } from '../types';
@@ -212,12 +212,52 @@ interface EditorProps {
 
 export default function Editor({ onNavigate, document }: EditorProps) {
   const [docName, setDocName] = useState(document?.name || "Sans titre");
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempDocName, setTempDocName] = useState(docName);
   const [activeFilter, setActiveFilter] = useState('Original');
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [signed, setSigned] = useState(false);
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'IDLE' | 'SAVING' | 'SAVED' | 'ERROR'>('IDLE');
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-save effect
+  useEffect(() => {
+    if (!document) return;
+
+    // Trigger save status
+    if (docName !== document.name || saveStatus === 'SAVING') {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      
+      setSaveStatus('SAVING');
+      
+      autoSaveTimerRef.current = setTimeout(async () => {
+        try {
+          await storageService.updateDocument(document.id, { 
+            name: docName
+          });
+          document.name = docName;
+          setSaveStatus('SAVED');
+          // Reset to IDLE after a delay
+          setTimeout(() => setSaveStatus('IDLE'), 2000);
+        } catch (err) {
+          console.error("Auto-save failed:", err);
+          setSaveStatus('ERROR');
+        }
+      }, 1500); // 1.5s debounce
+    }
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [docName, document]);
+
+  // Sync temp name if docName changes externally
+  useEffect(() => {
+    setTempDocName(docName);
+  }, [docName]);
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current;
@@ -282,19 +322,15 @@ export default function Editor({ onNavigate, document }: EditorProps) {
   const handleRenameScan = (newValue: string) => {
     const updatedName = docName.replace(/scan/gi, newValue);
     setDocName(updatedName);
-    if (document) {
-      document.name = updatedName;
-      // Also update tags if they contain "Scan"
-      const updatedTags = document.tags?.map(tag => tag.toLowerCase() === 'scan' ? newValue : tag) || [];
-      document.tags = updatedTags;
-      
-      // Persist the change immediately
-      storageService.updateDocument(document.id, { 
-        name: updatedName,
-        tags: updatedTags 
-      }).catch(err => console.error("Update failed:", err));
-    }
+    setTempDocName(updatedName);
   };
+  const handleRename = () => {
+    const updatedName = tempDocName.trim() || docName;
+    setDocName(updatedName);
+    setTempDocName(updatedName);
+    setIsEditingName(false);
+  };
+
   const filters = [
     { name: 'Original', icon: FileText },
     { name: 'HD Scan', icon: Save },
@@ -324,8 +360,78 @@ export default function Editor({ onNavigate, document }: EditorProps) {
       className="pb-32 px-5 md:px-6 max-w-7xl mx-auto"
     >
       {/* Editor Toolbar */}
-      <div className="sticky top-20 z-40 bg-primary-900/60 backdrop-blur-xl border-b border-white/5 -mx-5 md:-mx-6 px-5 md:px-6 py-3 md:py-4 mb-6 md:mb-8">
+      <div className="sticky top-20 z-40 bg-primary-900/60 backdrop-blur-xl border-b border-white/5 -mx-5 md:-mx-6 px-5 md:px-6 py-3 md:py-4 mb-8">
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          <ToolbarButton icon={ChevronLeft} label="Retour" onClick={() => onNavigate(AppView.LIBRARY)} />
+          <div className="h-6 w-px bg-white/10 mx-2" />
+          
+          {/* Editable Document Name in Toolbar */}
+          <div className="flex items-center min-w-0 flex-1 max-w-[200px] md:max-w-md">
+            {isEditingName ? (
+              <div className="flex items-center gap-1 w-full scale-95 origin-left">
+                <input 
+                  autoFocus
+                  type="text"
+                  value={tempDocName}
+                  onChange={(e) => setTempDocName(e.target.value)}
+                  onBlur={handleRename}
+                  onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+                  className="bg-white/10 border border-ai-blue font-bold text-xs md:text-sm text-text-main px-3 py-1.5 rounded-lg outline-none w-full"
+                />
+                <button 
+                  onClick={handleRename}
+                  className="p-1.5 bg-ai-blue text-white rounded-lg shadow-lg"
+                >
+                  <Check className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button 
+                onClick={() => {
+                  setTempDocName(docName);
+                  setIsEditingName(true);
+                }}
+                className="flex items-center gap-2 py-1.5 px-3 hover:bg-white/5 rounded-lg transition-all group max-w-full"
+              >
+                <span className="text-xs md:text-sm font-black text-text-main tracking-tight group-hover:text-ai-blue transition-colors truncate">
+                  {docName}
+                </span>
+                <PenTool className="w-3 h-3 text-zinc-600 group-hover:text-ai-blue shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            )}
+          </div>
+
+          <div className="h-6 w-px bg-white/10 mx-2" />
+          
+          {/* Saving Indicator */}
+          <div className="flex items-center gap-2 px-2 shrink-0">
+            {saveStatus === 'SAVING' && (
+              <div className="flex items-center gap-1.5">
+                <motion.div 
+                  animate={{ rotate: 360 }} 
+                  transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
+                >
+                  <RotateCw className="w-3 h-3 text-zinc-500" />
+                </motion.div>
+                <span className="text-[8px] font-black text-zinc-500 uppercase tracking-widest hidden md:inline">Sauvegarde...</span>
+              </div>
+            )}
+            {saveStatus === 'SAVED' && (
+              <div className="flex items-center gap-1.5">
+                <Cloud className="w-3 h-3 text-emerald-500" />
+                <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest hidden md:inline">Enregistré</span>
+              </div>
+            )}
+            {saveStatus === 'ERROR' && (
+              <div className="flex items-center gap-1.5">
+                <CloudOff className="w-3 h-3 text-red-500" />
+                <span className="text-[8px] font-black text-red-400 uppercase tracking-widest hidden md:inline">Erreur</span>
+              </div>
+            )}
+          </div>
+
+          <div className="h-6 w-px bg-white/10 mx-2" />
+          
           <ToolbarButton icon={Crop} label="Crop" onClick={() => alert('Outil de recadrage activé')} />
           <ToolbarButton icon={RotateCw} label="Rotate" onClick={() => alert('Image pivotée de 90°')} />
           <ToolbarButton 
@@ -388,7 +494,7 @@ export default function Editor({ onNavigate, document }: EditorProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 items-start pt-6">
         {/* PDF Preview Area */}
         <div className="lg:col-span-8 flex flex-col gap-4 md:gap-6">
           <div className="bg-[#1C1C1E] border border-white/5 rounded-3xl md:rounded-[40px] p-6 md:p-14 flex items-center justify-center min-h-[400px] md:min-h-[600px] relative overflow-hidden group shadow-2xl">
@@ -633,17 +739,11 @@ export default function Editor({ onNavigate, document }: EditorProps) {
              </h3>
              <div className="space-y-4">
                 <div className="space-y-3 pb-3 border-b border-white/5">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-500 font-medium">Nom du fichier</span>
-                    <input 
-                      type="text"
-                      value={docName}
-                      onChange={(e) => {
-                        setDocName(e.target.value);
-                        if (document) document.name = e.target.value;
-                      }}
-                      className="text-xs font-bold text-text-main bg-transparent border-none outline-none text-right max-w-[200px] focus:text-ai-blue transition-colors"
-                    />
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Nom du fichier</span>
+                    <span className="text-xs font-bold text-text-main truncate max-w-[150px]">
+                      {docName}
+                    </span>
                   </div>
                   
                   {docName.toLowerCase().includes('scan') && (
@@ -700,6 +800,20 @@ export default function Editor({ onNavigate, document }: EditorProps) {
                 </div>
                 
                 <MetaItem label="Créé le" value={document?.createdAt ? new Date(document.createdAt).toLocaleDateString() : 'N/A'} />
+                {document?.location && (
+                  <div className="flex justify-between items-center py-3 border-b border-white/5 last:border-0 group/loc">
+                    <span className="text-xs text-gray-500 font-medium">Localisation</span>
+                    <a 
+                      href={`https://www.google.com/maps?q=${document.location.latitude},${document.location.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-black text-ai-blue uppercase tracking-widest flex items-center gap-1 hover:bg-ai-blue/10 px-2 py-1 rounded-lg transition-all"
+                    >
+                      <MapPin className="w-3 h-3" />
+                      VOIR CARTE
+                    </a>
+                  </div>
+                )}
                 <MetaItem label="Pages" value={document ? `${pages.length} Pages` : 'N/A'} />
                 <MetaItem label="Taille" value={document?.size || 'N/A'} />
                 <MetaItem label="Type" value={document?.type || 'N/A'} />
@@ -710,13 +824,19 @@ export default function Editor({ onNavigate, document }: EditorProps) {
                    onClick={async () => {
                      if (document) {
                        try {
+                         setSaveStatus('SAVING');
                          await storageService.saveDocument(document);
-                         alert('Document sauvegardé dans les archives');
+                         setSaveStatus('SAVED');
+                         setTimeout(() => {
+                           onNavigate(AppView.LIBRARY);
+                         }, 500);
                        } catch (err) {
                          console.error(err);
+                         setSaveStatus('ERROR');
                        }
+                     } else {
+                       onNavigate(AppView.LIBRARY);
                      }
-                     onNavigate('LIBRARY');
                    }}
                    className="w-full h-14 bg-ai-gradient text-accent-text font-bold rounded-2xl flex items-center justify-center gap-2 ai-glow active:scale-95 transition-transform"
                 >

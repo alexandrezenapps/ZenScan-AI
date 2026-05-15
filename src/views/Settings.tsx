@@ -60,7 +60,7 @@ export default function Settings({ onNavigate }: SettingsProps) {
     try {
       setIsLoggingOut(true);
       await logout();
-      onNavigate('ONBOARDING');
+      onNavigate(AppView.ONBOARDING);
     } catch (error) {
       console.error("Logout failed", error);
     } finally {

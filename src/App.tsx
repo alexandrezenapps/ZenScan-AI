@@ -20,7 +20,7 @@ import { updateAppMeta } from './lib/icons';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import { useAuth } from './context/AuthContext';
-import { Loader2 } from 'lucide-react';
+import { Loader2, WifiOff } from 'lucide-react';
 
 // Lazy load views for better performance
 const Splash = lazy(() => import('./views/Splash'));
@@ -41,11 +41,26 @@ const LoadingFallback = () => (
 );
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<AppView | 'SPLASH' | 'ONBOARDING'>('SPLASH');
+  const [currentView, setCurrentView] = useState<AppView>(AppView.SPLASH);
   const [selectedDocument, setSelectedDocument] = useState<DocumentMetadata | null>(null);
   const [scannedImage, setScannedImage] = useState<string | null>(null);
+  const [scannedLocation, setScannedLocation] = useState<{ latitude: number, longitude: number } | null>(null);
   const [ocrLanguage, setOcrLanguage] = useState<string>('Français');
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const { user, loading } = useAuth();
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const color = localStorage.getItem('zenScanIconColor') || 'blue';
@@ -53,13 +68,19 @@ export default function App() {
     updateAppMeta(color, shape);
   }, []);
 
-  // Handle Auth state changes for navigation
+  // Handle Auth state changes for navigation and profile sync
   useEffect(() => {
     if (!loading) {
-      if (user && (currentView === 'SPLASH' || currentView === 'ONBOARDING')) {
-        setCurrentView('HOME');
-      } else if (!user && currentView !== 'SPLASH' && currentView !== 'ONBOARDING') {
-        setCurrentView('ONBOARDING');
+      if (user) {
+        import('./services/storageService').then(({ storageService }) => {
+          storageService.syncUserProfile();
+        });
+        
+        if (currentView === AppView.SPLASH || currentView === AppView.ONBOARDING) {
+          setCurrentView(AppView.HOME);
+        }
+      } else if (currentView !== AppView.SPLASH && currentView !== AppView.ONBOARDING) {
+        setCurrentView(AppView.ONBOARDING);
       }
     }
   }, [user, loading, currentView]);
@@ -86,9 +107,10 @@ export default function App() {
         return (
           <Scanner 
             onNavigate={setCurrentView} 
-            onScanComplete={(img, lang) => {
+            onScanComplete={(img, lang, loc) => {
               setScannedImage(img || null);
               if (lang) setOcrLanguage(lang);
+              if (loc) setScannedLocation(loc);
               setCurrentView('OCR');
             }} 
           />
@@ -99,10 +121,12 @@ export default function App() {
             onNavigate={setCurrentView} 
             onComplete={() => {
               setScannedImage(null);
+              setScannedLocation(null);
               setCurrentView('EDITOR');
             }} 
             onSelectDocument={setSelectedDocument}
             scannedImage={scannedImage}
+            scannedLocation={scannedLocation}
             initialLanguage={ocrLanguage}
           />
         );
@@ -122,6 +146,20 @@ export default function App() {
   return (
     <div className="min-h-screen bg-primary-900 overflow-x-hidden">
       {showNav && currentView !== 'SCANNER' && currentView !== 'OCR' && <Navbar />}
+
+      <AnimatePresence>
+        {isOffline && (
+          <motion.div 
+            initial={{ y: -50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -50, opacity: 0 }}
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-[110] bg-red-500/90 backdrop-blur-md px-4 py-2 rounded-full flex items-center gap-2 shadow-lg border border-red-400/20"
+          >
+            <WifiOff className="w-4 h-4 text-white" />
+            <span className="text-[10px] font-black text-white uppercase tracking-widest">Mode Hors Ligne</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <main className={showNav ? "pb-24 md:pb-32" : ""}>
         <AnimatePresence mode="wait">

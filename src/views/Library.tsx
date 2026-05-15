@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, SlidersHorizontal, FileText, X, Sparkles, Download, Share2, Trash2, Calendar, FileType, HardDrive, Tag, Plus, CheckCircle2, Loader2, ZoomIn, ZoomOut, Maximize, LayoutGrid, List, Mail, Languages, Printer, Copy, ExternalLink } from 'lucide-react';
+import { Search, SlidersHorizontal, FileText, X, Sparkles, Download, Share2, Trash2, Calendar, FileType, HardDrive, Tag, Plus, CheckCircle2, Loader2, ZoomIn, ZoomOut, Maximize, LayoutGrid, List, Mail, Languages, Printer, Copy, ExternalLink, ArrowUpDown, ChevronRight, Home } from 'lucide-react';
 import { AppView, DocumentMetadata } from '../types';
 import { GlassCard, AIOrb, PrimaryButton, AIChip } from '../components/PremiumComponents';
 import { DURATIONS, EASINGS } from '../lib/animations';
@@ -14,56 +14,95 @@ import { storageService } from '../services/storageService';
 import { useAuth } from '../context/AuthContext';
 
 // Memoized Document Card for performance
-const DocumentCard = React.memo(({ scan, idx, onClick }: { scan: DocumentMetadata, idx: number, onClick: (doc: DocumentMetadata) => void }) => {
+const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection }: { 
+  scan: DocumentMetadata, 
+  idx: number, 
+  onClick: (doc: DocumentMetadata) => void,
+  isSelected: boolean,
+  isSelectionMode: boolean,
+  onToggleSelection: (id: string) => void
+}) => {
   const displayUrl = scan.thumbnailUrl || scan.url;
+  
+  const handleClick = (e: React.MouseEvent) => {
+    if (isSelectionMode) {
+      e.stopPropagation();
+      onToggleSelection(scan.id);
+    } else {
+      onClick(scan);
+    }
+  };
+
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleSelection(scan.id);
+  };
+
   return (
     <FadeScale delay={idx * 30}>
       <div
-        onClick={() => onClick(scan)}
-        className="group relative bg-primary-800/40 border border-white/5 rounded-2xl md:rounded-[28px] overflow-hidden hover:border-ai-blue/30 transition-all duration-300 hover:shadow-2xl glass-card p-5 md:p-6 flex flex-col gap-4 cursor-pointer"
+        onClick={handleClick}
+        className={`group relative bg-white/[0.02] border ${isSelected ? 'border-ai-blue ring-1 ring-ai-blue/10 bg-ai-blue/[0.02]' : 'border-white/5'} rounded-3xl overflow-hidden hover:border-white/20 transition-all duration-500 glass-card p-6 flex flex-col gap-5 cursor-pointer shadow-sm hover:shadow-2xl`}
       >
-        <div className="h-40 md:h-48 rounded-xl md:rounded-[18px] bg-primary-700/30 flex items-center justify-center overflow-hidden border border-white/5 relative group">
+        <div className="h-44 md:h-52 rounded-2xl bg-primary-900/40 flex items-center justify-center overflow-hidden border border-white/5 relative group">
           {displayUrl && (scan.type !== 'PDF' || scan.thumbnailUrl) ? (
             <img 
               src={displayUrl} 
               alt={scan.name} 
               referrerPolicy="no-referrer"
-              className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+              className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-90 group-hover:opacity-100" 
               onError={(e) => {
                 (e.target as HTMLImageElement).src = "";
                 (e.target as HTMLImageElement).parentElement?.classList.add('flex-col');
               }}
             />
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center opacity-10 group-hover:scale-110 transition-transform duration-500">
+            <div className="absolute inset-0 flex items-center justify-center opacity-5 group-hover:scale-110 transition-transform duration-500">
               <FileText className="w-16 h-16 md:w-20 md:h-20 text-ai-blue" />
             </div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-primary-800/80 via-transparent to-transparent opacity-60"></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-primary-950/40 via-transparent to-transparent opacity-60" />
+          
+          {/* Metadata Overlay Top Left */}
+          <div className="absolute top-4 left-4 flex flex-col gap-1.5 z-40">
+             {/* Selection Indicator */}
+            <div 
+              onClick={handleCheckboxClick}
+              className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+                isSelected ? 'bg-ai-blue border-ai-blue text-white shadow-lg' : 'bg-black/30 backdrop-blur-md border border-white/20 text-transparent hover:border-white/40'
+              }`}
+            >
+              <CheckCircle2 className={`w-3.5 h-3.5 ${isSelected ? 'opacity-100' : 'opacity-0'}`} />
+            </div>
+          </div>
+
           {scan.isAiEnhanced && (
-            <div className="absolute top-3 right-3 md:top-4 md:right-4 h-7 w-7 md:h-8 md:w-8 rounded-full bg-ai-blue/20 backdrop-blur-md border border-ai-blue/30 flex items-center justify-center">
-              <Sparkles className="w-3.5 h-3.5 md:w-4 md:h-4 text-ai-blue" />
+            <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-ai-blue/5 backdrop-blur-2xl border border-ai-blue/30 px-2.5 py-1.5 rounded-xl shadow-[0_0_20px_rgba(79,124,255,0.15)]">
+              <Sparkles className="w-3 h-3 text-ai-blue" />
+              <span className="text-[7px] font-black text-ai-blue uppercase tracking-widest">Vision IA</span>
             </div>
           )}
+          
+          <div className="absolute bottom-3 left-4 flex items-center gap-2">
+             <span className="px-2 py-0.5 bg-black/40 backdrop-blur-md border border-white/10 rounded-md text-[8px] font-black text-white/50 uppercase tracking-widest">{scan.type}</span>
+             <span className="px-2 py-0.5 bg-black/40 backdrop-blur-md border border-white/10 rounded-md text-[8px] font-black text-white/50 uppercase tracking-widest">{scan.size}</span>
+          </div>
         </div>
-        <div className="flex justify-between items-start">
-          <div className="space-y-2">
-            <div className="space-y-1">
-              <h3 className="font-bold text-base md:text-lg text-text-main leading-tight group-hover:text-ai-blue transition-colors truncate">{scan.name}</h3>
-              <div className="flex items-center gap-2 text-[9px] md:text-xs text-zinc-500 tracking-widest font-black uppercase">
-                <span>{scan.type}</span>
-                <span className="w-1 h-1 rounded-full bg-zinc-700"></span>
-                <span>{scan.size}</span>
-              </div>
-            </div>
-            {scan.tags && scan.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 md:gap-2">
-                {scan.tags.slice(0, 2).map((tag, i) => (
-                  <span key={`${tag}-${i}`} className="text-[8px] md:text-[10px] font-black text-ai-blue/70 bg-ai-blue/5 border border-ai-blue/10 px-2 py-0.5 rounded md:rounded-md uppercase tracking-tighter">
-                    {tag}
-                  </span>
-                ))}
-              </div>
+
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <h3 className="font-bold text-sm md:text-base text-text-main leading-tight group-hover:text-ai-blue transition-colors truncate tracking-tight">{scan.name}</h3>
+            <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest leading-none">{scan.modifiedAt.toLocaleDateString()} • {scan.category || 'Non classé'}</p>
+          </div>
+          
+          <div className="flex flex-wrap gap-1.5">
+            {scan.tags && scan.tags.slice(0, 3).map((tag, i) => (
+              <span key={`${tag}-${i}`} className="text-[7px] font-black text-zinc-500 bg-white/[0.03] border border-white/5 px-2 py-1 rounded-md uppercase tracking-widest group-hover:border-ai-blue/20 group-hover:text-ai-blue transition-colors">
+                {tag}
+              </span>
+            ))}
+            {!scan.tags || scan.tags.length === 0 && (
+              <span className="text-[7px] font-black text-zinc-700 uppercase tracking-widest italic leading-none py-1">Aucune étiquette</span>
             )}
           </div>
         </div>
@@ -72,15 +111,46 @@ const DocumentCard = React.memo(({ scan, idx, onClick }: { scan: DocumentMetadat
   );
 });
 
-const DocumentListItem = React.memo(({ scan, idx, onClick }: { scan: DocumentMetadata, idx: number, onClick: (doc: DocumentMetadata) => void }) => {
+const DocumentListItem = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection }: { 
+  scan: DocumentMetadata, 
+  idx: number, 
+  onClick: (doc: DocumentMetadata) => void,
+  isSelected: boolean,
+  isSelectionMode: boolean,
+  onToggleSelection: (id: string) => void
+}) => {
   const displayUrl = scan.thumbnailUrl || scan.url;
+  
+  const handleClick = (e: React.MouseEvent) => {
+    if (isSelectionMode) {
+      e.stopPropagation();
+      onToggleSelection(scan.id);
+    } else {
+      onClick(scan);
+    }
+  };
+
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleSelection(scan.id);
+  };
+
   return (
     <FadeScale delay={idx * 20}>
       <div 
-        onClick={() => onClick(scan)}
-        className="group flex items-center gap-4 p-4 md:p-5 bg-primary-800/40 border border-white/5 rounded-2xl md:rounded-[24px] hover:border-ai-blue/30 transition-all duration-300 glass-card cursor-pointer"
+        onClick={handleClick}
+        className={`group flex items-center gap-4 p-3 md:p-4 bg-primary-800/40 border ${isSelected ? 'border-ai-blue ring-2 ring-ai-blue/10 bg-ai-blue/5' : 'border-white/5'} rounded-2xl md:rounded-[24px] hover:border-ai-blue/30 transition-all duration-300 glass-card cursor-pointer`}
       >
-        <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl bg-primary-700/30 flex items-center justify-center flex-shrink-0 group-hover:bg-ai-blue/10 transition-colors overflow-hidden">
+        <div 
+          onClick={handleCheckboxClick}
+          className={`w-6 h-6 md:w-8 md:h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0 ${
+            isSelected ? 'bg-ai-blue border-ai-blue text-white shadow-lg' : 'bg-white/5 border border-white/10 text-transparent hover:border-white/30'
+          }`}
+        >
+          <CheckCircle2 className={`w-4 h-4 md:w-5 md:h-5 ${isSelected ? 'opacity-100' : 'opacity-0'}`} />
+        </div>
+
+        <div className="w-10 h-10 md:w-14 md:h-14 rounded-lg bg-primary-700/30 flex items-center justify-center flex-shrink-0 group-hover:bg-ai-blue/10 transition-colors overflow-hidden">
           {displayUrl && (scan.type !== 'PDF' || scan.thumbnailUrl) ? (
             <img 
               src={displayUrl} 
@@ -89,7 +159,7 @@ const DocumentListItem = React.memo(({ scan, idx, onClick }: { scan: DocumentMet
               className="w-full h-full object-cover transition-transform duration-500" 
             />
           ) : (
-            <FileText className="w-6 h-6 md:w-8 md:h-8 text-zinc-500 group-hover:text-ai-blue transition-colors" />
+            <FileText className="w-5 h-5 md:w-6 md:h-6 text-zinc-500 group-hover:text-ai-blue transition-colors" />
           )}
         </div>
         
@@ -133,12 +203,14 @@ interface LibraryProps {
 
 export default function Library({ onNavigate, onSelectDocument }: LibraryProps) {
   const [documents, setDocuments] = useState<DocumentMetadata[]>([]);
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
   const [displayMode, setDisplayMode] = useState<'grid' | 'list'>(localStorage.getItem('zenScanLibraryDisplay') as 'grid' || 'grid');
   const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState<DocumentMetadata | null>(null);
   const [newTag, setNewTag] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [sortMode, setSortMode] = useState<'date-desc' | 'date-asc' | 'name-asc' | 'name-desc' | 'size-desc'>('date-desc');
   const [zoomScale, setZoomScale] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const { user } = useAuth();
@@ -155,6 +227,74 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
   const handleResetZoom = () => setZoomScale(1);
   const handleZoomIn = () => setZoomScale(prev => Math.min(prev + 0.25, 3));
   const handleZoomOut = () => setZoomScale(prev => Math.max(prev - 0.25, 0.5));
+
+  const toggleSelection = (id: string) => {
+    setSelectedDocIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const clearSelection = () => setSelectedDocIds([]);
+
+  const handleBatchDelete = async () => {
+    if (selectedDocIds.length === 0 || !user || !confirm(`Supprimer ces ${selectedDocIds.length} documents définitivement ?`)) return;
+    
+    try {
+      await Promise.all(selectedDocIds.map(id => storageService.deleteDocument(id)));
+      setDocuments(prev => prev.filter(d => !selectedDocIds.includes(d.id)));
+      setSelectedDocIds([]);
+    } catch (error) {
+      console.error("Error bulk deleting", error);
+    }
+  };
+
+  const handleBatchTag = async () => {
+    const tag = prompt("Entrez un tag à ajouter à la sélection :");
+    if (!tag || selectedDocIds.length === 0 || !user) return;
+    
+    const trimmedTag = tag.trim();
+    
+    try {
+      const updatedDocs = documents
+        .filter(d => selectedDocIds.includes(d.id))
+        .map(d => ({
+          ...d,
+          tags: Array.from(new Set([...(d.tags || []), trimmedTag]))
+        }));
+      
+      await Promise.all(updatedDocs.map(d => storageService.saveDocument(d)));
+      
+      setDocuments(prev => prev.map(d => {
+        const updated = updatedDocs.find(up => up.id === d.id);
+        return updated || d;
+      }));
+      
+      alert(`Tag "${trimmedTag}" ajouté à ${selectedDocIds.length} documents.`);
+    } catch (error) {
+      console.error("Error bulk tagging", error);
+    }
+  };
+
+  const handleBatchShare = async () => {
+    if (selectedDocIds.length === 0) return;
+    const selectedFiles = documents.filter(d => selectedDocIds.includes(d.id));
+    const urls = selectedFiles.map(f => f.url).filter(Boolean);
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Documents ZenScan',
+          text: `Partage de ${selectedFiles.length} documents depuis ZenScan AI.`,
+          url: window.location.origin
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      alert(`Lien de l'application copié pour partager ${selectedFiles.length} documents.`);
+      navigator.clipboard.writeText(window.location.origin);
+    }
+  };
 
   useEffect(() => {
     // Reset zoom when selecting a new document
@@ -267,8 +407,47 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                             doc.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
         return matchesCategory && matchesSearch;
       })
-      .sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime());
-  }, [documents, selectedCategories, searchQuery]);
+      .sort((a, b) => {
+        if (sortMode === 'date-desc') return new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
+        if (sortMode === 'date-asc') return new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime();
+        if (sortMode === 'name-asc') return a.name.localeCompare(b.name);
+        if (sortMode === 'name-desc') return b.name.localeCompare(a.name);
+        if (sortMode === 'size-desc') {
+          const sizeA = parseFloat(a.size.replace(/[^0-9.]/g, '')) || 0;
+          const sizeB = parseFloat(b.size.replace(/[^0-9.]/g, '')) || 0;
+          const isAMB = a.size.includes('MB');
+          const isBMB = b.size.includes('MB');
+          const valA = isAMB ? sizeA * 1024 : sizeA;
+          const valB = isBMB ? sizeB * 1024 : sizeB;
+          return valB - valA;
+        }
+        return 0;
+      });
+  }, [documents, selectedCategories, searchQuery, sortMode]);
+
+  const stats = useMemo(() => {
+    const totalSizeKb = documents.reduce((acc, doc) => {
+      const sizeStr = doc.size || '0 KB';
+      const num = parseFloat(sizeStr.replace(/[^0-9.]/g, '')) || 0;
+      const isMB = sizeStr.includes('MB');
+      return acc + (isMB ? num * 1024 : num);
+    }, 0);
+
+    const categoriesCount = documents.reduce((acc: Record<string, number>, doc) => {
+      const cat = doc.category || 'Non classé';
+      acc[cat] = (acc[cat] || 0) + 1;
+      return acc;
+    }, {});
+
+    const topCategory = Object.entries(categoriesCount).sort((a, b) => (b[1] as number) - (a[1] as number))[0]?.[0] || 'Aucune';
+
+    return {
+      total: documents.length,
+      size: totalSizeKb > 1024 ? `${(totalSizeKb / 1024).toFixed(1)} MB` : `${Math.round(totalSizeKb)} KB`,
+      topCategory,
+      aiEnhanced: documents.filter(d => d.isAiEnhanced).length
+    };
+  }, [documents]);
 
   return (
     <motion.div
@@ -277,13 +456,115 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
       exit={{ opacity: 0, x: -20 }}
       className="pt-24 md:pt-32 pb-32 px-5 md:px-8 max-w-7xl mx-auto"
     >
+      {/* Zen AI Pulse Statistics */}
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10"
+      >
+        <GlassCard className="p-4 md:p-5 border-white/5 hover:border-ai-blue/30 transition-all relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+            <FileText className="w-8 h-8 text-ai-blue" />
+          </div>
+          <p className="text-[9px] font-black text-ai-blue uppercase tracking-widest mb-1 italic">Total Library</p>
+          <div className="flex items-baseline gap-1">
+            <span className="text-2xl md:text-3xl font-bold text-white">{stats.total}</span>
+            <span className="text-[10px] text-zinc-500 font-bold uppercase">Docs</span>
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-4 md:p-5 border-white/5 hover:border-purple-500/30 transition-all relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+            <Sparkles className="w-8 h-8 text-purple-400" />
+          </div>
+          <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest mb-1 italic">Intelligence IA</p>
+          <div className="flex items-baseline gap-1">
+            <span className="text-2xl md:text-3xl font-bold text-white">{stats.aiEnhanced}</span>
+            <span className="text-[10px] text-zinc-500 font-bold uppercase">Analysés</span>
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-4 md:p-5 border-white/5 hover:border-emerald-500/30 transition-all relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+            <HardDrive className="w-8 h-8 text-emerald-400" />
+          </div>
+          <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-1 italic">Stockage Utilisé</p>
+          <div className="flex items-baseline gap-1">
+            <span className="text-2xl md:text-3xl font-bold text-white">{stats.size}</span>
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-4 md:p-5 border-white/5 hover:border-amber-500/30 transition-all relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+            <Tag className="w-8 h-8 text-amber-400" />
+          </div>
+          <p className="text-[9px] font-black text-amber-400 uppercase tracking-widest mb-1 italic">Top Catégorie</p>
+          <div className="flex items-baseline gap-1">
+            <span className="text-lg md:text-xl font-bold text-white truncate max-w-full">{stats.topCategory}</span>
+          </div>
+        </GlassCard>
+      </motion.div>
+
+      {/* Breadcrumb Navigation System */}
+      <motion.div 
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+        className="flex items-center gap-2 mb-6 md:mb-8 overflow-x-auto no-scrollbar py-1"
+      >
+        <button 
+          onClick={clearFilters}
+          className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-ai-blue transition-colors flex-shrink-0"
+        >
+          <Home className="w-3.5 h-3.5" />
+          <span>Bibliothèque</span>
+        </button>
+        
+        <ChevronRight className="w-3 h-3 text-zinc-700 flex-shrink-0" />
+        
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className={`text-[10px] font-black uppercase tracking-widest ${selectedCategories.length === 0 ? 'text-ai-blue' : 'text-zinc-500'}`}>
+            Documents
+          </span>
+        </div>
+
+        {selectedCategories.length > 0 && (
+          <>
+            <ChevronRight className="w-3 h-3 text-zinc-700 flex-shrink-0" />
+            <div className="flex items-center gap-2 overflow-hidden flex-shrink-0">
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-ai-blue/10 border border-ai-blue/20 rounded-full">
+                <span className="text-[9px] font-black text-ai-blue uppercase tracking-widest truncate max-w-[120px] md:max-w-[200px]">
+                  {selectedCategories.length === 1 ? selectedCategories[0] : `${selectedCategories.length} Filtres`}
+                </span>
+                <button 
+                  onClick={clearFilters}
+                  className="hover:scale-110 active:scale-90 transition-transform"
+                >
+                  <X className="w-2.5 h-2.5 text-ai-blue" />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </motion.div>
+
       <header className="mb-8 md:mb-12 space-y-4 md:space-y-6">
-        <div className="space-y-1">
-          <p className="text-[9px] md:text-[10px] font-black text-ai-blue uppercase tracking-[0.4em] leading-none">Archive Numérique</p>
-          <h1 className="text-4xl md:text-[52px] font-bold leading-[1.1] tracking-tight text-text-main">
-            Library <span className="opacity-40 font-light">Docs</span>
-          </h1>
-          <p className="text-sm md:text-base text-zinc-500 max-w-lg leading-snug">Gérez et analysez vos archives avec une extraction IA de précision.</p>
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+          <div className="space-y-1">
+            <p className="text-[9px] md:text-[10px] font-black text-ai-blue uppercase tracking-[0.4em] leading-none">Archive Numérique</p>
+            <h1 className="text-4xl md:text-[52px] font-bold leading-[1.1] tracking-tight text-text-main">
+              Library <span className="opacity-40 font-light">Docs</span>
+            </h1>
+            <p className="text-sm md:text-base text-zinc-500 max-w-lg leading-snug">Gérez et analysez vos archives avec une extraction IA de précision.</p>
+          </div>
+          
+          <PrimaryButton 
+            onClick={() => onNavigate(AppView.SCANNER)}
+            className="h-12 md:h-14 px-8 md:px-10 rounded-2xl shadow-[0_10px_30px_rgba(59,130,246,0.3)] hover:scale-105 active:scale-95 transition-all text-sm md:text-base"
+          >
+            Nouveau Scan
+          </PrimaryButton>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 items-center">
@@ -334,6 +615,25 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
             </button>
           </div>
         </div>
+
+        {/* Categories Quick Filter */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 -mx-5 px-5 md:mx-0 md:px-0">
+          <button 
+            onClick={clearFilters}
+            className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategories.length === 0 ? 'bg-ai-blue/10 text-ai-blue border border-ai-blue/30 shadow-[0_0_20px_rgba(59,130,246,0.15)]' : 'bg-white/5 text-zinc-500 border border-white/5 hover:border-white/10'}`}
+          >
+            Tous les documents
+          </button>
+          {categoriesList.map(cat => (
+            <button 
+              key={cat}
+              onClick={() => toggleCategory(cat)}
+              className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategories.includes(cat) ? 'bg-ai-blue/10 text-ai-blue border border-ai-blue/30 shadow-[0_0_20px_rgba(59,130,246,0.15)]' : 'bg-white/5 text-zinc-500 border border-white/5 hover:border-white/10'}`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
       </header>
 
       <div className={displayMode === 'grid' 
@@ -355,7 +655,10 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
               key={scan.id} 
               scan={scan} 
               idx={idx} 
-              onClick={setSelectedDoc} 
+              onClick={setSelectedDoc}
+              isSelected={selectedDocIds.includes(scan.id)}
+              isSelectionMode={selectedDocIds.length > 0}
+              onToggleSelection={toggleSelection}
             />
           ) : (
             <DocumentListItem
@@ -363,6 +666,9 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
               scan={scan}
               idx={idx}
               onClick={setSelectedDoc}
+              isSelected={selectedDocIds.includes(scan.id)}
+              isSelectionMode={selectedDocIds.length > 0}
+              onToggleSelection={toggleSelection}
             />
           )
         ))}
@@ -370,7 +676,7 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
         {displayMode === 'grid' && (
           <FadeScale delay={loading ? 0 : filteredDocuments.length * 30}>
             <button 
-              onClick={() => onNavigate('SCANNER')}
+              onClick={() => onNavigate(AppView.SCANNER)}
               className="group border-2 border-dashed border-white/10 rounded-2xl md:rounded-[28px] flex flex-col items-center justify-center p-6 md:p-8 hover:border-ai-blue/50 hover:bg-ai-blue/5 transition-all aspect-video md:aspect-auto w-full h-full min-h-[250px] md:min-h-[300px]"
             >
               <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-primary-800 flex items-center justify-center mb-3 md:mb-4 group-hover:bg-ai-blue transition-all duration-300">
@@ -380,6 +686,66 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
             </button>
           </FadeScale>
         )}
+      </div>
+
+      {/* Batch Action Bar */}
+      <AnimatePresence>
+        {selectedDocIds.length > 0 && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[110] w-[calc(100%-40px)] max-w-2xl"
+          >
+            <GlassCard glow className="p-4 md:p-5 flex items-center justify-between border-ai-blue/30 bg-primary-950/90 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={clearSelection}
+                  className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all text-zinc-400"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <div>
+                  <p className="text-[10px] font-black text-ai-blue uppercase tracking-widest leading-none mb-1">Sélection active</p>
+                  <p className="text-sm font-bold text-white leading-none">{selectedDocIds.length} documents sélectionnés</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleBatchTag}
+                  className="h-10 md:h-11 px-4 md:px-5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 text-xs md:text-sm font-bold text-white hover:bg-white/10 transition-all"
+                >
+                  <Tag className="w-4 h-4 text-ai-blue" />
+                  <span className="hidden sm:inline">Taguer</span>
+                </button>
+                <button 
+                  onClick={handleBatchShare}
+                  className="h-10 md:h-11 px-4 md:px-5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 text-xs md:text-sm font-bold text-white hover:bg-white/10 transition-all"
+                >
+                  <Share2 className="w-4 h-4 text-ai-blue" />
+                  <span className="hidden sm:inline">Exporter</span>
+                </button>
+                <button 
+                  onClick={handleBatchDelete}
+                  className="h-10 md:h-11 px-4 md:px-5 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center gap-2 text-xs md:text-sm font-bold text-red-500 hover:bg-red-500/20 transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span className="hidden sm:inline">Supprimer</span>
+                </button>
+              </div>
+            </GlassCard>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Security Footer Notice */}
+      <div className="mt-16 flex flex-col items-center gap-2 opacity-30 pb-20">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-3 h-3 text-ai-blue" />
+          <span className="text-[9px] font-black uppercase tracking-widest">Système de Capture Certifié par Zen AI</span>
+        </div>
+        <p className="text-[8px] text-zinc-500 max-w-xs text-center uppercase tracking-tighter leading-none">Conforme aux normes de protection des données (RGPD). Stockage décentralisé et chiffré.</p>
       </div>
 
       {/* Document Detail Sidebar */}
@@ -452,6 +818,34 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                   </div>
                 </div>
 
+                <div className="space-y-4">
+                  <div className="flex items-center px-1">
+                    <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Trier par</h4>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {[
+                      { id: 'date-desc', label: 'Plus récent first' },
+                      { id: 'date-asc', label: 'Plus ancien first' },
+                      { id: 'name-asc', label: 'Nom (A-Z)' },
+                      { id: 'name-desc', label: 'Nom (Z-A)' },
+                      { id: 'size-desc', label: 'Taille' }
+                    ].map((mode) => (
+                      <button
+                        key={mode.id}
+                        onClick={() => setSortMode(mode.id as any)}
+                        className={`flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 ${
+                          sortMode === mode.id 
+                            ? 'bg-ai-blue/10 border-ai-blue/40 text-white' 
+                            : 'bg-white/5 border-white/5 text-zinc-400 hover:border-white/10 hover:bg-white/[0.07]'
+                        }`}
+                      >
+                        <span className="text-xs font-bold tracking-tight">{mode.label}</span>
+                        {sortMode === mode.id && <CheckCircle2 className="w-4 h-4 text-ai-blue" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="pt-6 border-t border-white/5">
                   <PrimaryButton 
                     text="Appliquer" 
@@ -487,13 +881,21 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
             >
               <div className="p-6 md:p-8 space-y-8 md:space-y-10">
                 {/* Header */}
-                <div className="flex justify-between items-center">
-                  <AIChip label="Visualisation AI" />
+                <div className="flex justify-between items-center bg-white/[0.02] -mx-8 -mt-8 px-8 py-6 border-b border-white/5 mb-10">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-ai-blue/10 flex items-center justify-center border border-ai-blue/20">
+                      <FileText className="w-4 h-4 text-ai-blue" />
+                    </div>
+                    <div>
+                      <h4 className="text-[10px] font-black text-ai-blue uppercase tracking-widest leading-none">Inspecteur de Document</h4>
+                      <p className="text-[8px] font-bold text-zinc-500 uppercase tracking-tighter mt-1">ID: {selectedDoc.id.slice(0, 8)}...-CERT</p>
+                    </div>
+                  </div>
                   <button 
                     onClick={() => setSelectedDoc(null)}
-                    className="w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all border border-white/5 active:scale-90"
+                    className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all border border-white/5 active:scale-95 group"
                   >
-                    <X className="w-5 h-5 md:w-6 md:h-6 text-white" />
+                    <X className="w-5 h-5 text-zinc-500 group-hover:text-white transition-colors" />
                   </button>
                 </div>
 
@@ -548,25 +950,33 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                     </motion.div>
                   </div>
                   
-                  {/* Zoom Controls Overlay */}
-                  <div className="absolute top-4 right-4 flex flex-col gap-2 z-40 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <button 
-                      onClick={handleZoomIn}
-                      className="w-8 h-8 rounded-lg bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-ai-blue transition-colors"
-                    >
-                      <ZoomIn className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={handleResetZoom}
-                      className="w-8 h-8 rounded-lg bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-ai-blue transition-colors"
-                    >
-                      <Maximize className="w-4 h-4" />
-                    </button>
+                  {/* Zoom Controls Bar - Floating Bottom Center */}
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 z-40 bg-black/70 backdrop-blur-3xl border border-white/10 p-2 rounded-[24px] shadow-2xl ring-1 ring-white/5">
                     <button 
                       onClick={handleZoomOut}
-                      className="w-8 h-8 rounded-lg bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-ai-blue transition-colors"
+                      disabled={zoomScale <= 0.5}
+                      className="w-10 h-10 rounded-2xl flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all active:scale-90 disabled:opacity-20 disabled:cursor-not-allowed group"
+                      title="Zoom arrière"
                     >
-                      <ZoomOut className="w-4 h-4" />
+                      <ZoomOut className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    </button>
+                    
+                    <button 
+                      onClick={handleResetZoom}
+                      className="px-4 h-10 rounded-2xl flex flex-col items-center justify-center hover:bg-white/10 transition-all group overflow-hidden relative"
+                      title="Réinitialiser"
+                    >
+                      <span className="text-[10px] font-black text-ai-blue uppercase tracking-[0.2em]">{Math.round(zoomScale * 100)}%</span>
+                      <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-tighter opacity-0 group-hover:opacity-100 absolute bottom-0.5 transition-all">RESET</span>
+                    </button>
+
+                    <button 
+                      onClick={handleZoomIn}
+                      disabled={zoomScale >= 3}
+                      className="w-10 h-10 rounded-2xl flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all active:scale-90 disabled:opacity-20 group"
+                      title="Zoom avant"
+                    >
+                      <ZoomIn className="w-4 h-4 group-hover:scale-110 transition-transform" />
                     </button>
                   </div>
                   
@@ -691,26 +1101,38 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                   </div>
 
                   {/* AI Snippet Section */}
-                  <GlassCard glow className="p-6 md:p-8 border-ai-blue/10 bg-ai-blue/[0.02]">
-                    <div className="flex items-center gap-3 mb-3 md:mb-4">
-                      <AIOrb size="w-7 h-7 md:w-8 md:h-8" />
-                      <div className="flex-1">
-                        <h4 className="text-sm md:text-base text-text-main font-bold tracking-tight">Analyse Zen Vision</h4>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between px-1">
+                      <h4 className="text-[8px] font-black text-zinc-500 uppercase tracking-[0.2em] leading-none">Analyse Vision IA</h4>
+                      <div className="px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1">
+                        <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-[7px] font-black text-emerald-500 uppercase tracking-widest">IA Active</span>
                       </div>
-                      {selectedDoc.contentSnippet && (
-                        <button 
-                          onClick={handleCopyContent}
-                          className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-ai-blue transition-all"
-                          title="Copier le texte"
-                        >
-                          <Copy className="w-4 h-4" />
-                        </button>
-                      )}
                     </div>
-                    <p className="text-xs md:text-sm text-zinc-400 leading-relaxed italic font-medium">
-                      "{selectedDoc.contentSnippet || "Analyse en attente d'indexation complète..."}"
-                    </p>
-                  </GlassCard>
+                    <div className="p-4 md:p-5 rounded-2xl border border-white/5 bg-white/[0.01] relative overflow-hidden group">
+                      <div className="absolute top-0 left-0 w-8 h-[1px] bg-ai-blue shadow-[0_0_8px_#4F7CFF]" />
+                      <div className="absolute top-0 left-0 w-[1px] h-8 bg-ai-blue shadow-[0_0_8px_#4F7CFF]" />
+                      
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 pt-0.5">
+                          <AIOrb size="w-6 h-6" />
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-[11px] md:text-xs text-zinc-400 leading-relaxed italic">
+                            "{selectedDoc.contentSnippet || "Flux de données ZenScan..."}"
+                          </p>
+                          {selectedDoc.contentSnippet && (
+                            <button 
+                              onClick={handleCopyContent}
+                              className="text-[8px] font-black text-ai-blue hover:text-white transition-colors uppercase tracking-widest flex items-center gap-1.5"
+                            >
+                              <Copy className="w-2.5 h-2.5" /> COPIER L'INSIGHT
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Tags Management */}
                   <div className="space-y-3 md:space-y-4">
@@ -794,7 +1216,7 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                       text="Editer" 
                       onClick={() => {
                         if (onSelectDocument) onSelectDocument(selectedDoc);
-                        onNavigate('EDITOR');
+                        onNavigate(AppView.EDITOR);
                       }}
                       className="flex-1 h-12 md:h-14"
                     />
@@ -810,7 +1232,7 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                       className="col-span-2 h-12 md:h-14 rounded-xl md:rounded-[18px] bg-white/5 border border-white/10 text-white font-bold text-xs md:text-sm flex items-center justify-center gap-2 hover:bg-white/10 transition-all active:scale-95"
                     >
                       <Copy className="w-4 h-4 md:w-5 md:h-5 text-ai-blue" />
-                      Copier les informations
+                      Copier le contenu extrait
                     </button>
                   </div>
                 </div>

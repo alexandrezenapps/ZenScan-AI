@@ -2,14 +2,15 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 0. Global Search Deny
+    // 0. Global Safety Net
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Primitives
+    // --- Helpers ---
+    
     function isSignedIn() {
-      return request.auth != null && request.auth.token.email_verified == true;
+      return request.auth != null;
     }
 
     function isOwner(userId) {
@@ -28,73 +29,44 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // Validation Blueprints
-    function isValidUser(data) {
-      return data.get('uid', request.auth.uid) == request.auth.uid
-        && (data.get('email', '') == null || data.get('email', '') is string)
-        && (data.get('displayName', '') == null || data.get('displayName', '') is string)
-        && (data.get('photoURL', '') == null || data.get('photoURL', '') is string);
+    // --- Validation Blueprints ---
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid']) &&
+             data.uid == request.auth.uid &&
+             (data.get('email', '') is string) &&
+             (data.get('displayName', '') is string);
     }
 
     function isValidDocument(data) {
-      return data.userId == request.auth.uid
-        && data.id is string
-        && data.name is string
-        && data.type in ['PDF', 'JPG', 'PNG', 'JPEG']
-        && data.tags is list
-        && data.isAiEnhanced is bool
-        && (data.get('ocrLanguage', '') == null || data.get('ocrLanguage', '') is string)
-        && (data.get('thumbnailUrl', '') == null || data.get('thumbnailUrl', '') is string);
+      return data.keys().hasAll(['id', 'name', 'type']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 200 &&
+             data.type in ['PDF', 'JPG', 'PNG'] &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 100)) &&
+             (!('userId' in data) || (data.userId == request.auth.uid));
     }
 
-    // Collection Rules
+    // --- Collection Matches ---
+
     match /users/{userId} {
       allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserProfile(incoming());
+      allow update: if isOwner(userId) && 
+                      isValidUserProfile(incoming()) &&
+                      incoming().uid == existing().uid &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'cloudSyncEnabled', 'lastActive']);
       
-      allow create: if isOwner(userId) 
-        && isValidUser(incoming())
-        && incoming().createdAt == request.time
-        && incoming().updatedAt == request.time;
-        
-      allow update: if isOwner(userId)
-        && (
-          // Admin override
-          false || 
-          // Action: Profile Update
-          (
-            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt']) &&
-            incoming().get('updatedAt', request.time) == request.time
-          )
-        );
-
-      match /documents/{docId} {
-        allow get: if isOwner(userId) && isValidId(docId);
+      match /documents/{documentId} {
         allow list: if isOwner(userId);
-        
-        allow create: if isOwner(userId) 
-          && isValidId(docId)
-          && isValidDocument(incoming())
-          && (incoming().id == docId || incoming().id == null)
-          && incoming().createdAt == request.time
-          && incoming().updatedAt == request.time;
-          
-        allow update: if isOwner(userId)
-          && isValidId(docId)
-          && isValidDocument(incoming())
-          && incoming().id == existing().id
-          && incoming().userId == existing().userId
-          && incoming().createdAt == existing().createdAt
-          && incoming().updatedAt == request.time
-          && incoming().diff(existing()).affectedKeys().hasOnly([
-            'name', 'category', 'tags', 'isAiEnhanced', 'contentSnippet', 'extractedData', 'ocrLanguage', 'thumbnailUrl', 'updatedAt'
-          ]);
-
-        allow delete: if isOwner(userId) && isValidId(docId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(documentId) && isValidDocument(incoming());
+        allow update: if isOwner(userId) && 
+                        isValidDocument(incoming()) &&
+                        incoming().id == existing().id &&
+                        incoming().diff(existing()).affectedKeys().hasAny(['name', 'category', 'tags', 'isAiEnhanced', 'extractedData', 'url', 'thumbnailUrl', 'ocrLanguage', 'location', 'updatedAt', 'modifiedAt']);
+        allow delete: if isOwner(userId);
       }
-    }
-
-    match /test/connection {
-      allow read: if true;
     }
   }
 }
