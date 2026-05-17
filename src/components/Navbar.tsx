@@ -38,13 +38,24 @@ export default function Navbar() {
           </div>
           <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Network Live</span>
         </div>
-        <button className="h-11 w-11 rounded-2xl overflow-hidden border border-white/5 active:scale-90 transition-all flex items-center justify-center bg-white/[0.03] hover:bg-white/[0.08] shadow-lg">
-          {user?.photoURL ? (
-            <img src={user.photoURL} alt={user.displayName || 'User'} className="w-full h-full object-cover" />
-          ) : (
-            <UserCircle className="w-6 h-6 text-zinc-400" />
+        
+        <div className="flex items-center gap-3">
+          {user && (
+            <div className="hidden md:flex flex-col items-end">
+              <span className="text-[10px] font-black text-white uppercase tracking-widest max-w-[150px] truncate">
+                {user.displayName || user.email}
+              </span>
+              <span className="text-[7px] font-bold text-ai-blue uppercase tracking-[0.3em] opacity-60">Membre Premium</span>
+            </div>
           )}
-        </button>
+          <button className="h-11 w-11 rounded-2xl overflow-hidden border border-white/5 active:scale-90 transition-all flex items-center justify-center bg-white/[0.03] hover:bg-white/[0.08] shadow-lg">
+            {user?.photoURL ? (
+              <img src={user.photoURL} alt={user.displayName || 'User'} className="w-full h-full object-cover" />
+            ) : (
+              <UserCircle className="w-6 h-6 text-zinc-400" />
+            )}
+          </button>
+        </div>
       </div>
     </header>
   );

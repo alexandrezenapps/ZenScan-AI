@@ -5,8 +5,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle2, Database, Tag, Lightbulb, ArrowRight, Activity, Cpu, Binary, Layers, Search, ShieldCheck, Box, Loader2, Mail, Share2, FileText, Languages, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Database, Tag, Lightbulb, ArrowRight, Activity, Cpu, Binary, Layers, Search, ShieldCheck, Box, Loader2, Mail, Share2, FileText, Languages, RefreshCw, WifiOff, Zap } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+import Tesseract from 'tesseract.js';
 import { AppView, DocumentMetadata } from '../types';
 import { GlassCard, AIOrb } from '../components/PremiumComponents';
 import { useAuth } from '../context/AuthContext';
@@ -97,6 +98,35 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
     { id: 'br', x: 95, y: 90 },
   ]);
   const [isDragging, setIsDragging] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const isValidQuadrilateral = useCallback((points: typeof corners) => {
+    const tl = points.find(p => p.id === 'tl')!;
+    const tr = points.find(p => p.id === 'tr')!;
+    const bl = points.find(p => p.id === 'bl')!;
+    const br = points.find(p => p.id === 'br')!;
+
+    // 1. Check for minimum distance (no overlap)
+    const minDistance = 5;
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        const dx = points[i].x - points[j].x;
+        const dy = points[i].y - points[j].y;
+        if (Math.sqrt(dx * dx + dy * dy) < minDistance) return "Points trop proches";
+      }
+    }
+
+    // 2. Structural sanity checks
+    if (tl.x >= tr.x || bl.x >= br.x) return "Ordre horizontal invalide";
+    if (tl.y >= bl.y || tr.y >= br.y) return "Ordre vertical invalide";
+
+    // 3. Convexity check (simplified for this specific use case)
+    // The cross product of consecutive sides should have the same sign
+    // Let's just ensure they don't cross over fundamentally
+    if (tl.x >= br.x || bl.x >= tr.x) return "Quadrilatère croisé";
+
+    return null;
+  }, []);
 
   const handlePointerMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (!isDragging) return;
@@ -120,6 +150,7 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
 
   useEffect(() => {
     if (isDragging) {
+      setValidationError(null);
       window.addEventListener('mousemove', handlePointerMove as any);
       window.addEventListener('mouseup', handlePointerUp);
       window.addEventListener('touchmove', handlePointerMove as any, { passive: false });
@@ -173,6 +204,7 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
     }));
   }, []);
 
+  const [isOfflineMode, setIsOfflineMode] = useState(!navigator.onLine);
   const [logs, setLogs] = useState<string[]>(['[CORE] Chargement des poids neuronaux...']);
 
   const getFilterStyle = useCallback(() => {
@@ -184,12 +216,124 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
     }
   }, [filter]);
 
-  const startAnalysis = useCallback(() => {
+  const startAnalysis = useCallback(async () => {
+    if (!localImage) return;
+
+    const error = isValidQuadrilateral(corners);
+    if (error) {
+      setValidationError(error);
+      return;
+    }
+    setValidationError(null);
+
     setIsEditing(false);
     setProgress(0);
     setDiscoveredItems([]);
-    setLogs(['[CORE] Validation du recadrage...', '[CORE] Initialisation de l\'analyse...']);
-  }, []);
+    
+    if (isOfflineMode) {
+      setLogs(['[LOCAL_AI] Initialisation du moteur Tesseract...', '[CORE] Chargement du modèle de langue local...']);
+      
+      try {
+        // Tesseract.js recognizes the image
+        const worker = await Tesseract.createWorker(
+          selectedLanguage === 'Français' ? 'fra' : 
+          selectedLanguage === 'English' ? 'eng' : 
+          selectedLanguage === 'Español' ? 'spa' : 
+          selectedLanguage === 'Deutsch' ? 'deu' : 
+          selectedLanguage === 'Italiano' ? 'ita' : 'fra',
+          1,
+          {
+            logger: (m) => {
+              if (m.status === 'recognizing text') {
+                setProgress(Math.floor(m.progress * 100));
+                if (m.progress > 0.5 && !logs.includes('[LOCAL_AI] Décodage des caractères...')) {
+                  setLogs(prev => ['[LOCAL_AI] Décodage des caractères...', ...prev].slice(0, 3));
+                }
+              }
+            }
+          }
+        );
+
+        const { data: { text } } = await worker.recognize(localImage);
+        await worker.terminate();
+
+        setProgress(100);
+        setCurrentPhase('OCR Local terminé');
+        
+        // Basic analysis of text for offline mode
+        const isInvoice = text.toLowerCase().includes('facture') || text.toLowerCase().includes('invoice') || text.toLowerCase().includes('net à payer');
+        const isReceipt = text.toLowerCase().includes('ticket') || text.toLowerCase().includes('cash') || text.toLowerCase().includes('reçu');
+        
+        let type = 'DOCUMENT';
+        if (isInvoice) type = 'FACTURE';
+        else if (isReceipt) type = 'REÇU';
+
+        setDocName(`Offline Scan - ${new Date().toLocaleDateString()}`);
+        setDetectedType(type);
+        
+        const newSemanticData = [
+          { id: 'type', label: 'TYPE_DOC', value: type, conf: '0.850' },
+          { id: 'amount', label: 'NET_VALUE', value: 'Extraction manuelle native', conf: '0.700', premium: false },
+          { id: 'date', label: 'EPOCH_REF', value: new Date().toLocaleDateString(), conf: '0.900' }
+        ];
+        
+        setSemanticData(newSemanticData);
+        setDiscoveredItems(['type', 'date']); // Amount often needs manual check in offline basic mode
+        setLogs(['[LOCAL_AI] Extraction terminée (Hors-ligne).', '[CORE] Données prêtes pour validation.']);
+        
+      } catch (err) {
+        console.error("Offline OCR Error:", err);
+        setLogs(['[ERROR] Échec de l\'OCR local.', '[CORE] Réessayez avec une connexion active.']);
+        setProgress(100);
+      }
+      return;
+    }
+
+    setLogs(['[REAL_AI] Initialisation de l\'Analyse Visuelle...', '[CORE] Connexion aux clusters neuronaux...']);
+
+    // Start progress animation
+    const progressInterval = setInterval(() => {
+      setProgress(prev => (prev < 90 ? prev + 0.5 : prev));
+    }, 100);
+
+    try {
+      const response = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          image: localImage, 
+          context: `Langue: ${selectedLanguage}, Catégorie: ${selectedCategory}` 
+        }),
+      });
+
+      if (!response.ok) throw new Error('AI Analysis Failed');
+      const data = await response.json();
+
+      clearInterval(progressInterval);
+      setProgress(100);
+      setCurrentPhase('Analyse IA terminée');
+      
+      if (data.name) setDocName(data.name);
+      if (data.category) setSelectedCategory(data.category);
+      
+      const newSemanticData = [
+        { id: 'type', label: 'TYPE_DOC', value: data.type || 'DOCUMENT', conf: '1.000' },
+        { id: 'amount', label: 'NET_VALUE', value: data.extractedData?.amount || data.extractedData?.total || 'N/A', conf: '0.998', premium: true },
+        { id: 'date', label: 'EPOCH_REF', value: data.extractedData?.date || new Date().toLocaleDateString(), conf: '1.000' }
+      ];
+      setSemanticData(newSemanticData);
+      setDetectedType(data.type || 'DOCUMENT');
+      setDiscoveredItems(['type', 'amount', 'date']);
+      setLogs(['[REAL_AI] Succès: Informations extraites.', '[CORE] Archive prête pour validation.']);
+    } catch (err) {
+      console.error("AI Analysis Error:", err);
+      clearInterval(progressInterval);
+      setProgress(100);
+      setLogs(['[ERROR] Échec de l\'analyse intelligence.', '[CORE] Utilisation du mode simulé par défaut.']);
+      // Fallback to simulation if AI fails
+      setDiscoveredItems(['type', 'amount', 'date']);
+    }
+  }, [localImage, selectedLanguage, selectedCategory]);
 
   useEffect(() => {
     if (isEditing) return; // Wait for user to validate framing
@@ -203,65 +347,25 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
       { p: 100, msg: 'Document PDF prêt.' }
     ];
 
-    const typeCycle = ['FACTURE', 'REÇU', 'CONTRAT', 'ID_CARD', 'MATÉRIALISÉ'];
-    let typeIdx = 0;
-
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const next = Math.min(prev + 1.2, 100);
-        
-        // Update phase message
-        const phase = phases.find(ph => next <= ph.p);
-        if (phase && phase.msg !== currentPhase) setCurrentPhase(phase.msg);
-
-        // Type Detection flicker at start
-        if (next > 10 && next < 30) {
-          if (Math.random() > 0.7) {
-            setDetectedType(typeCycle[typeIdx % typeCycle.length]);
-            typeIdx++;
-          }
-        } else if (next >= 30) {
-          setDetectedType('FACTURE');
-        }
-
-        // Technical logs
-        if (Math.random() > 0.9 && next < 100) {
-          const techLogs = [
-            'MATRIX_DOT_PROD_99.2',
-            'ISO_DENOISE_FILTER',
-            'OCR_ENGINE_CORTEX_A1',
-            'VALID_SYNC_STREAM',
-            'RELATIONAL_MAPPING_OK'
-          ];
-          setLogs(prevLogs => [techLogs[Math.floor(Math.random() * techLogs.length)], ...prevLogs].slice(0, 3));
-        }
-
-        if (next >= 100) {
-          clearInterval(interval);
-          return 100;
-        }
-        return next;
-      });
-    }, 40);
-
-    const timeouts = [
-      setTimeout(() => setDiscoveredItems(prev => [...prev, 'type']), 1500),
-      setTimeout(() => setDiscoveredItems(prev => [...prev, 'amount']), 3000),
-      setTimeout(() => setDiscoveredItems(prev => [...prev, 'date']), 4500),
-    ];
-
-    return () => {
-      clearInterval(interval);
-      timeouts.forEach(t => clearTimeout(t));
+    // Note: The main logic is now handled in startAnalysis
+    // This effect is kept for phase messages based on progress
+    const checkPhase = () => {
+      const currentProgress = progress;
+      const phase = phases.find(ph => currentProgress <= ph.p);
+      if (phase && phase.msg !== currentPhase) {
+        setCurrentPhase(phase.msg);
+      }
     };
-  }, []);
+
+    checkPhase();
+  }, [isEditing, progress, currentPhase]);
 
   const handleFinalize = async () => {
     if (!user) return;
     
     setIsSaving(true);
     try {
-      const docId = `doc_${Date.now()}`;
+      const docId = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       
       let finalUrl = scannedImage || "";
       let finalType: 'PDF' | 'JPG' | 'PNG' = 'PDF';
@@ -370,8 +474,8 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
         location: scannedLocation || undefined,
         size: `${Math.round(finalUrl.length / 1024)} KB`,
         modifiedAt: new Date(),
-        tags: ['Scan', detectedType, selectedCategory, 'PDF'],
-        isAiEnhanced: true,
+        tags: ['Scan', detectedType, selectedCategory, 'PDF', ...(isOfflineMode ? ['Offline'] : ['AI_Cloud'])],
+        isAiEnhanced: !isOfflineMode,
         contentSnippet: `${semanticData.find(d => d.id === 'type')?.value} - NET_VALUE: ${semanticData.find(d => d.id === 'amount')?.value}`,
         extractedData: {
           type: semanticData.find(d => d.id === 'type')?.value || detectedType,
@@ -718,27 +822,62 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
-            {/* Filters Row */}
-            <div className="flex flex-col gap-3">
-              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.3em] text-center">Filtres de Rendu Documentaire</span>
-              <div className="flex justify-center gap-3">
-                {[
-                  { id: 'original', label: 'NATURAL', desc: 'Sans filtre' },
-                  { id: 'bw', label: 'B&W', desc: 'Texte pur' },
-                  { id: 'grayscale', label: 'GRIS', desc: 'Pro' },
-                  { id: 'enhanced', label: 'HQ', desc: 'Contrast+' }
-                ].map((f) => (
-                  <button
-                    key={f.id}
-                    onClick={() => setFilter(f.id as any)}
-                    className={`flex flex-col items-center gap-1.5 px-4 py-3 rounded-2xl border transition-all ${
-                      filter === f.id ? 'bg-ai-blue border-ai-blue shadow-[0_0_20px_#4F7CFF] text-white' : 'bg-white/5 border-white/10 text-zinc-500 hover:border-white/20'
-                    }`}
-                  >
-                    <span className="text-[10px] font-black tracking-widest">{f.label}</span>
-                    <span className="text-[7px] font-bold opacity-60 uppercase tracking-tighter">{f.desc}</span>
-                  </button>
-                ))}
+            {/* Aspect Ratio & Filters Row */}
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3">
+                <span className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.3em] text-center">Format du Document</span>
+                <div className="flex justify-center gap-2">
+                  {[
+                    { id: 'custom', label: 'LIBRE' },
+                    { id: 'a4', label: 'A4', ratio: 0.707 },
+                    { id: 'id', label: 'CARTE', ratio: 1.58 },
+                    { id: 'square', label: '1:1', ratio: 1 }
+                  ].map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={() => {
+                        if (r.ratio) {
+                          setValidationError(null);
+                          const margin = 10;
+                          const width = 80;
+                          const height = width / r.ratio;
+                          const yOffset = (100 - height) / 2;
+                          setCorners([
+                            { id: 'tl', x: margin, y: yOffset },
+                            { id: 'tr', x: 100 - margin, y: yOffset },
+                            { id: 'bl', x: margin, y: yOffset + height },
+                            { id: 'br', x: 100 - margin, y: yOffset + height },
+                          ]);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black text-white hover:bg-white/10 transition-all uppercase tracking-widest"
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <span className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.3em] text-center">Filtres de Rendu Documentaire</span>
+                <div className="flex justify-center gap-3">
+                  {[
+                    { id: 'original', label: 'NATURAL' },
+                    { id: 'bw', label: 'B&W' },
+                    { id: 'grayscale', label: 'GRIS' },
+                    { id: 'enhanced', label: 'HQ' }
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => setFilter(f.id as any)}
+                      className={`px-4 py-3 rounded-2xl border transition-all ${
+                        filter === f.id ? 'bg-ai-blue border-ai-blue shadow-[0_0_20px_#4F7CFF] text-white' : 'bg-white/5 border-white/10 text-zinc-500 hover:border-white/20'
+                      }`}
+                    >
+                      <span className="text-[10px] font-black tracking-widest">{f.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -752,6 +891,7 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
                     { id: 'br', x: 98, y: 98 },
                   ]);
                   setRotation(0);
+                  setValidationError(null);
                 }}
                 className="flex-1 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-black text-[10px] uppercase tracking-[0.2em] hover:bg-white/10 active:scale-95 transition-all"
               >
@@ -765,12 +905,37 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
                 Dévier
               </button>
               <button 
+                onClick={() => setIsOfflineMode(!isOfflineMode)}
+                className={`flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 ${
+                  isOfflineMode 
+                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.2)]' 
+                  : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
+                }`}
+                title={isOfflineMode ? "Mode Hors-ligne Actif" : "Mode Cloud Actif"}
+              >
+                {isOfflineMode ? <WifiOff className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                {isOfflineMode ? 'Local' : 'Cloud'}
+              </button>
+              <button 
                 onClick={startAnalysis}
                 className="flex-[2] py-4 bg-ai-gradient rounded-2xl text-white font-black text-[10px] uppercase tracking-[0.3em] ai-glow active:scale-95 transition-all shadow-2xl"
               >
                 Analyser
               </button>
             </div>
+            
+            <AnimatePresence>
+              {validationError && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="p-3 bg-red-500/20 border border-red-500/40 rounded-xl text-red-500 text-[9px] font-black uppercase tracking-widest text-center"
+                >
+                  Erreur de cadrage: {validationError}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         ) : (
           <>
@@ -859,13 +1024,13 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
             <div className="flex flex-wrap gap-2 md:gap-2.5 h-auto md:h-16 content-start">
               <AnimatePresence mode="popLayout">
                 {discoveredItems.length > 0 && (
-                  <motion.span initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="px-2 py-1 md:px-3 md:py-1.5 bg-ai-blue/10 border border-ai-blue/20 text-ai-blue text-[7px] md:text-[9px] font-black uppercase rounded-lg md:rounded-xl tracking-tighter">#Digital_Archive</motion.span>
+                  <motion.span key="tag-digital" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="px-2 py-1 md:px-3 md:py-1.5 bg-ai-blue/10 border border-ai-blue/20 text-ai-blue text-[7px] md:text-[9px] font-black uppercase rounded-lg md:rounded-xl tracking-tighter">#Digital_Archive</motion.span>
                 )}
                 {discoveredItems.length > 1 && (
-                  <motion.span initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="px-2 py-1 md:px-3 md:py-1.5 bg-white/5 border border-white/10 text-zinc-500 text-[7px] md:text-[9px] font-black uppercase rounded-lg md:rounded-xl tracking-tighter">#Automobile</motion.span>
+                  <motion.span key="tag-auto" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="px-2 py-1 md:px-3 md:py-1.5 bg-white/5 border border-white/10 text-zinc-500 text-[7px] md:text-[9px] font-black uppercase rounded-lg md:rounded-xl tracking-tighter">#Automobile</motion.span>
                 )}
                 {discoveredItems.length >= 3 && (
-                  <motion.span initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="px-2 py-1 md:px-3 md:py-1.5 bg-white/5 border border-white/10 text-zinc-500 text-[7px] md:text-[9px] font-black uppercase rounded-lg md:rounded-xl tracking-tighter">#Pro_Services</motion.span>
+                  <motion.span key="tag-pro" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="px-2 py-1 md:px-3 md:py-1.5 bg-white/5 border border-white/10 text-zinc-500 text-[7px] md:text-[9px] font-black uppercase rounded-lg md:rounded-xl tracking-tighter">#Pro_Services</motion.span>
                 )}
               </AnimatePresence>
             </div>

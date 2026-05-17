@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, SlidersHorizontal, FileText, X, Sparkles, Download, Share2, Trash2, Calendar, FileType, HardDrive, Tag, Plus, CheckCircle2, Loader2, ZoomIn, ZoomOut, Maximize, LayoutGrid, List, Mail, Languages, Printer, Copy, ExternalLink, ArrowUpDown, ChevronRight, Home } from 'lucide-react';
+import { Search, SlidersHorizontal, FileText, X, Sparkles, Download, Share2, Trash2, Calendar, FileType, HardDrive, Tag, Plus, CheckCircle2, Loader2, ZoomIn, ZoomOut, Maximize, LayoutGrid, List, Mail, Languages, Printer, Copy, ExternalLink, ArrowUpDown, ChevronRight, Home, Eye, ChevronLeft, RotateCw } from 'lucide-react';
 import { AppView, DocumentMetadata } from '../types';
 import { GlassCard, AIOrb, PrimaryButton, AIChip } from '../components/PremiumComponents';
 import { DURATIONS, EASINGS } from '../lib/animations';
@@ -14,13 +14,14 @@ import { storageService } from '../services/storageService';
 import { useAuth } from '../context/AuthContext';
 
 // Memoized Document Card for performance
-const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection }: { 
+const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection, onQuickPreview }: { 
   scan: DocumentMetadata, 
   idx: number, 
   onClick: (doc: DocumentMetadata) => void,
   isSelected: boolean,
   isSelectionMode: boolean,
-  onToggleSelection: (id: string) => void
+  onToggleSelection: (id: string) => void,
+  onQuickPreview: (doc: DocumentMetadata) => void
 }) => {
   const displayUrl = scan.thumbnailUrl || scan.url;
   
@@ -44,7 +45,13 @@ const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMo
         onClick={handleClick}
         className={`group relative bg-white/[0.02] border ${isSelected ? 'border-ai-blue ring-1 ring-ai-blue/10 bg-ai-blue/[0.02]' : 'border-white/5'} rounded-3xl overflow-hidden hover:border-white/20 transition-all duration-500 glass-card p-6 flex flex-col gap-5 cursor-pointer shadow-sm hover:shadow-2xl`}
       >
-        <div className="h-44 md:h-52 rounded-2xl bg-primary-900/40 flex items-center justify-center overflow-hidden border border-white/5 relative group">
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            onQuickPreview(scan);
+          }}
+          className="h-44 md:h-52 rounded-2xl bg-primary-900/40 flex items-center justify-center overflow-hidden border border-white/5 relative group cursor-zoom-in"
+        >
           {displayUrl && (scan.type !== 'PDF' || scan.thumbnailUrl) ? (
             <img 
               src={displayUrl} 
@@ -64,7 +71,7 @@ const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMo
           <div className="absolute inset-0 bg-gradient-to-t from-primary-950/40 via-transparent to-transparent opacity-60" />
           
           {/* Metadata Overlay Top Left */}
-          <div className="absolute top-4 left-4 flex flex-col gap-1.5 z-40">
+          <div className="absolute top-4 left-4 flex flex-col gap-1.5 z-[60]" onClick={(e) => e.stopPropagation()}>
              {/* Selection Indicator */}
             <div 
               onClick={handleCheckboxClick}
@@ -77,9 +84,32 @@ const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMo
           </div>
 
           {scan.isAiEnhanced && (
-            <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-ai-blue/5 backdrop-blur-2xl border border-ai-blue/30 px-2.5 py-1.5 rounded-xl shadow-[0_0_20px_rgba(79,124,255,0.15)]">
+            <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-ai-blue/5 backdrop-blur-2xl border border-ai-blue/30 px-2.5 py-1.5 rounded-xl shadow-[0_0_20px_rgba(79,124,255,0.15)] z-[60]">
               <Sparkles className="w-3 h-3 text-ai-blue" />
               <span className="text-[7px] font-black text-ai-blue uppercase tracking-widest">Vision IA</span>
+            </div>
+          )}
+
+          {/* Quick Preview Badge */}
+          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-50 pointer-events-none">
+            <div className="bg-ai-blue/90 backdrop-blur-xl text-white px-4 py-2 rounded-full flex items-center gap-2 transform translate-y-4 group-hover:translate-y-0 transition-all duration-500 shadow-2xl ring-1 ring-white/20">
+              <Eye className="w-4 h-4" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Aperçu rapide</span>
+            </div>
+          </div>
+
+          {/* Hover Content Peek Overlay */}
+          {scan.contentSnippet && (
+            <div className="absolute inset-0 bg-primary-950/80 backdrop-blur-sm p-5 flex flex-col justify-end opacity-0 group-hover:opacity-100 transition-all duration-500 z-40 translate-y-4 group-hover:translate-y-0 pointer-events-none">
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3 text-ai-blue" />
+                  <span className="text-[7px] font-black text-white/40 uppercase tracking-[0.2em]">Aperçu IA</span>
+                </div>
+                <p className="text-[10px] text-white/80 leading-relaxed line-clamp-4 italic bg-gradient-to-br from-white to-white/60 bg-clip-text text-transparent italic">
+                  "{scan.contentSnippet}"
+                </p>
+              </div>
             </div>
           )}
           
@@ -111,13 +141,14 @@ const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMo
   );
 });
 
-const DocumentListItem = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection }: { 
+const DocumentListItem = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection, onQuickPreview }: { 
   scan: DocumentMetadata, 
   idx: number, 
   onClick: (doc: DocumentMetadata) => void,
   isSelected: boolean,
   isSelectionMode: boolean,
-  onToggleSelection: (id: string) => void
+  onToggleSelection: (id: string) => void,
+  onQuickPreview: (doc: DocumentMetadata) => void
 }) => {
   const displayUrl = scan.thumbnailUrl || scan.url;
   
@@ -150,21 +181,42 @@ const DocumentListItem = React.memo(({ scan, idx, onClick, isSelected, isSelecti
           <CheckCircle2 className={`w-4 h-4 md:w-5 md:h-5 ${isSelected ? 'opacity-100' : 'opacity-0'}`} />
         </div>
 
-        <div className="w-10 h-10 md:w-14 md:h-14 rounded-lg bg-primary-700/30 flex items-center justify-center flex-shrink-0 group-hover:bg-ai-blue/10 transition-colors overflow-hidden">
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            onQuickPreview(scan);
+          }}
+          className="w-10 h-10 md:w-14 md:h-14 rounded-lg bg-primary-700/30 flex items-center justify-center flex-shrink-0 group-hover:bg-ai-blue/20 transition-all overflow-hidden border border-white/5 hover:border-ai-blue/30 cursor-zoom-in relative group/vignette"
+        >
           {displayUrl && (scan.type !== 'PDF' || scan.thumbnailUrl) ? (
             <img 
               src={displayUrl} 
               alt={scan.name} 
               referrerPolicy="no-referrer"
-              className="w-full h-full object-cover transition-transform duration-500" 
+              className="w-full h-full object-cover transition-transform duration-500 group-hover/vignette:scale-110" 
             />
           ) : (
             <FileText className="w-5 h-5 md:w-6 md:h-6 text-zinc-500 group-hover:text-ai-blue transition-colors" />
           )}
+          <div className="absolute inset-0 bg-ai-blue/0 group-hover/vignette:bg-ai-blue/10 transition-colors flex items-center justify-center">
+            <Eye className="w-4 h-4 text-white opacity-0 group-hover/vignette:opacity-100 transition-opacity" />
+          </div>
         </div>
         
-        <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex-1 min-w-0 space-y-1 relative group/info">
           <h3 className="font-bold text-sm md:text-base text-text-main truncate group-hover:text-ai-blue transition-colors">{scan.name}</h3>
+          
+          {/* List Hover Snippet */}
+          {scan.contentSnippet && (
+            <div className="absolute top-full left-0 mt-1 z-50 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none hidden md:block">
+              <div className="bg-primary-900/90 backdrop-blur-xl border border-white/10 rounded-xl p-3 shadow-2xl max-w-sm">
+                <p className="text-[9px] text-white/70 italic leading-relaxed line-clamp-2">
+                  "{scan.contentSnippet}"
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 text-[8px] md:text-[10px] text-zinc-500 tracking-widest font-black uppercase">
             <span>{scan.type}</span>
             <span className="w-1 h-1 rounded-full bg-zinc-700 font-normal"></span>
@@ -187,6 +239,16 @@ const DocumentListItem = React.memo(({ scan, idx, onClick, isSelected, isSelecti
           {scan.isAiEnhanced && (
             <Sparkles className="w-3.5 h-3.5 text-ai-blue opacity-50" />
           )}
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onQuickPreview(scan);
+            }}
+            className="w-8 h-8 md:w-10 md:h-10 rounded-lg border border-white/5 flex items-center justify-center bg-white/5 hover:border-ai-blue/20 hover:text-ai-blue transition-colors"
+            title="Aperçu rapide"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
           <div className="w-8 h-8 md:w-10 md:h-10 rounded-full border border-white/5 flex items-center justify-center group-hover:border-ai-blue/20 transition-colors">
             <Plus className="w-4 h-4 text-zinc-600 group-hover:text-ai-blue" />
           </div>
@@ -209,12 +271,53 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
   const [selectedDoc, setSelectedDoc] = useState<DocumentMetadata | null>(null);
   const [newTag, setNewTag] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
+  const [aiOnly, setAiOnly] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [sortMode, setSortMode] = useState<'date-desc' | 'date-asc' | 'name-asc' | 'name-desc' | 'size-desc'>('date-desc');
   const [zoomScale, setZoomScale] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pdfPage, setPdfPage] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const categoriesList = ['Factures', 'Recettes', 'Contrats', 'Identité', 'Personnel', 'Travail', 'Autre'];
+
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  useEffect(() => {
+    // Reset zoom and page when selecting a new document
+    setZoomScale(1);
+    setIsFullScreen(false);
+    setPdfPage(1);
+    setRotation(0);
+  }, [selectedDoc?.id]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectedDoc) return;
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === '=' || e.key === '+') {
+          e.preventDefault();
+          handleZoomIn();
+        } else if (e.key === '-') {
+          e.preventDefault();
+          handleZoomOut();
+        } else if (e.key === '0') {
+          e.preventDefault();
+          handleResetZoom();
+        }
+      } else {
+        if (selectedDoc.type === 'PDF') {
+          if (e.key === 'ArrowRight') setPdfPage(prev => prev + 1);
+          else if (e.key === 'ArrowLeft') setPdfPage(prev => Math.max(1, prev - 1));
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedDoc, zoomScale]);
 
   const toggleCategory = (cat: string) => {
     setSelectedCategories(prev => 
@@ -222,11 +325,23 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
     );
   };
 
-  const clearFilters = () => setSelectedCategories([]);
+  const clearFilters = () => {
+    setSelectedCategories([]);
+    setSelectedTypes([]);
+    setAiOnly(false);
+  };
 
   const handleResetZoom = () => setZoomScale(1);
-  const handleZoomIn = () => setZoomScale(prev => Math.min(prev + 0.25, 3));
-  const handleZoomOut = () => setZoomScale(prev => Math.max(prev - 0.25, 0.5));
+  const handleZoomIn = () => setZoomScale(prev => Math.min(prev + 0.25, 5));
+  const handleZoomOut = () => setZoomScale(prev => Math.max(prev - 0.25, 0.25));
+  const handleRotate = () => setRotation(prev => (prev + 90) % 360);
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.deltaY < 0) handleZoomIn();
+      else handleZoomOut();
+    }
+  };
 
   const toggleSelection = (id: string) => {
     setSelectedDocIds(prev => 
@@ -297,11 +412,6 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
   };
 
   useEffect(() => {
-    // Reset zoom when selecting a new document
-    setZoomScale(1);
-  }, [selectedDoc?.id]);
-
-  useEffect(() => {
     if (!user) return;
 
     const fetchDocs = async () => {
@@ -351,6 +461,20 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
     }
   };
 
+  const handleSetCategory = async (cat: string) => {
+    if (!selectedDoc || !user) return;
+    
+    const updatedDoc = { ...selectedDoc, category: cat };
+    
+    try {
+      await storageService.saveDocument(updatedDoc);
+      setSelectedDoc(updatedDoc);
+      setDocuments(prev => prev.map(d => d.id === selectedDoc.id ? updatedDoc : d));
+    } catch (error) {
+      console.error("Error setting category", error);
+    }
+  };
+
   const handleDeleteDoc = async () => {
     if (!selectedDoc || !user) return;
     
@@ -390,7 +514,7 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
 
   const handlePrint = () => {
     if (selectedDoc?.url) {
-      const printWindow = window.open(selectedDoc.url, '_blank');
+      const printWindow = window.open(`${selectedDoc.url}${selectedDoc.type === 'PDF' ? `#page=${pdfPage}` : ''}`, '_blank');
       if (printWindow) {
         printWindow.print();
       }
@@ -403,9 +527,11 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
         const matchesCategory = selectedCategories.length === 0 || 
                                (doc.category && selectedCategories.includes(doc.category)) || 
                                (doc.tags && selectedCategories.some(cat => doc.tags.includes(cat)));
+        const matchesType = selectedTypes.length === 0 || selectedTypes.includes(doc.type);
+        const matchesAi = !aiOnly || doc.isAiEnhanced;
         const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             doc.tags?.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
-        return matchesCategory && matchesSearch;
+        return matchesCategory && matchesSearch && matchesType && matchesAi;
       })
       .sort((a, b) => {
         if (sortMode === 'date-desc') return new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
@@ -603,13 +729,13 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
             <button 
               onClick={() => setIsFilterOpen(true)}
               className={`relative w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl glass-card flex items-center justify-center transition-colors flex-shrink-0 ${
-                selectedCategories.length > 0 ? 'text-ai-blue border-ai-blue/30' : 'text-zinc-500 hover:text-ai-blue'
+                (selectedCategories.length > 0 || selectedTypes.length > 0 || aiOnly) ? 'text-ai-blue border-ai-blue/30' : 'text-zinc-500 hover:text-ai-blue'
               }`}
             >
               <SlidersHorizontal className="w-5 h-5 md:w-6 md:h-6" />
-              {selectedCategories.length > 0 && (
+              {(selectedCategories.length > 0 || selectedTypes.length > 0 || aiOnly) && (
                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-ai-blue text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg animate-in fade-in zoom-in">
-                  {selectedCategories.length}
+                  {selectedCategories.length + selectedTypes.length + (aiOnly ? 1 : 0)}
                 </span>
               )}
             </button>
@@ -659,6 +785,10 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
               isSelected={selectedDocIds.includes(scan.id)}
               isSelectionMode={selectedDocIds.length > 0}
               onToggleSelection={toggleSelection}
+              onQuickPreview={(doc) => {
+                setSelectedDoc(doc);
+                setIsFullScreen(true);
+              }}
             />
           ) : (
             <DocumentListItem
@@ -669,6 +799,10 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
               isSelected={selectedDocIds.includes(scan.id)}
               isSelectionMode={selectedDocIds.length > 0}
               onToggleSelection={toggleSelection}
+              onQuickPreview={(doc) => {
+                setSelectedDoc(doc);
+                setIsFullScreen(true);
+              }}
             />
           )
         ))}
@@ -765,13 +899,13 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ duration: DURATIONS.PREMIUM, ease: EASINGS.PREMIUM }}
-              className="fixed right-0 top-0 bottom-0 w-80 md:w-96 bg-primary-950 border-l border-white/10 z-[121] shadow-2xl overflow-y-auto no-scrollbar p-8"
+              className="fixed right-0 top-0 bottom-0 w-full md:w-96 bg-primary-950 border-l border-white/10 z-[121] shadow-2xl flex flex-col"
             >
-                <div className="flex justify-between items-center mb-10">
-                  <div className="space-y-1">
-                    <p className="text-[9px] font-black text-ai-blue uppercase tracking-[0.4em]">Configuration</p>
-                    <h2 className="text-2xl font-bold text-text-main tracking-tighter">Filtres <span className="opacity-40">Avancés</span></h2>
-                  </div>
+              <div className="p-8 pb-4 flex justify-between items-center bg-white/[0.02] border-b border-white/5">
+                <div className="space-y-1">
+                  <p className="text-[9px] font-black text-ai-blue uppercase tracking-[0.4em]">Configuration</p>
+                  <h2 className="text-2xl font-bold text-text-main tracking-tighter">Filtres <span className="opacity-40">Avancés</span></h2>
+                </div>
                 <button 
                   onClick={() => setIsFilterOpen(false)}
                   className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all border border-white/5"
@@ -780,16 +914,69 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                 </button>
               </div>
 
-              <div className="space-y-8">
+              <div className="flex-1 overflow-y-auto no-scrollbar p-8 space-y-10">
+                {/* AI Toggle */}
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] px-1">Options Zen AI</h4>
+                  <button 
+                    onClick={() => setAiOnly(!aiOnly)}
+                    className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 ${
+                      aiOnly 
+                        ? 'bg-ai-blue/10 border-ai-blue/40 text-white shadow-[0_0_20px_rgba(79,124,255,0.1)]' 
+                        : 'bg-white/5 border-white/5 text-zinc-400 hover:border-white/10'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${aiOnly ? 'bg-ai-blue/20 text-ai-blue' : 'bg-white/5 text-zinc-500'}`}>
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div className="text-left">
+                        <p className="text-sm font-bold tracking-tight">Vision IA uniquement</p>
+                        <p className="text-[10px] opacity-40 font-medium">Docs analysés par l'intelligence</p>
+                      </div>
+                    </div>
+                    <div className={`w-10 h-5 rounded-full relative transition-colors ${aiOnly ? 'bg-ai-blue' : 'bg-zinc-800'}`}>
+                      <motion.div 
+                        animate={{ x: aiOnly ? 22 : 4 }}
+                        className="absolute top-1 w-3 h-3 rounded-full bg-white shadow-sm"
+                      />
+                    </div>
+                  </button>
+                </div>
+
+                {/* File Types */}
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] px-1">Formats</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {['PDF', 'JPG', 'PNG'].map((type) => {
+                      const isSelected = selectedTypes.includes(type);
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => setSelectedTypes(prev => isSelected ? prev.filter(t => t !== type) : [...prev, type])}
+                          className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${
+                            isSelected 
+                              ? 'bg-ai-blue/10 border-ai-blue/40 text-white' 
+                              : 'bg-white/5 border-white/5 text-zinc-400 hover:bg-white/[0.08]'
+                          }`}
+                        >
+                          <div className={`w-2 h-2 rounded-full ${isSelected ? 'bg-ai-blue shadow-[0_0_8px_#4F7CFF]' : 'bg-zinc-800'}`} />
+                          <span className="text-[10px] font-black uppercase tracking-widest">{type}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="space-y-4">
                   <div className="flex justify-between items-center px-1">
                     <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Catégories</h4>
                     {selectedCategories.length > 0 && (
                       <button 
-                        onClick={clearFilters}
+                        onClick={() => setSelectedCategories([])}
                         className="text-[10px] font-bold text-ai-blue/60 hover:text-ai-blue transition-colors"
                       >
-                        Réinitialiser
+                        Reset
                       </button>
                     )}
                   </div>
@@ -845,12 +1032,20 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                     ))}
                   </div>
                 </div>
+              </div>
 
-                <div className="pt-6 border-t border-white/5">
+              <div className="p-8 pt-6 border-t border-white/5 bg-white/[0.01]">
+                <div className="flex gap-3">
+                  <button 
+                    onClick={clearFilters}
+                    className="flex-1 h-14 rounded-[18px] bg-white/5 border border-white/10 text-white font-black text-[10px] uppercase tracking-widest hover:bg-white/10 transition-all"
+                  >
+                    Effacer Tout
+                  </button>
                   <PrimaryButton 
                     text="Appliquer" 
                     onClick={() => setIsFilterOpen(false)} 
-                    className="w-full h-14"
+                    className="flex-[2] h-14"
                   />
                 </div>
               </div>
@@ -873,15 +1068,15 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
 
             {/* Sidebar Pane */}
             <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
+              initial={isFullScreen ? { scale: 0.9, opacity: 0 } : { x: '100%' }}
+              animate={isFullScreen ? { scale: 1, opacity: 1, x: 0, width: '100vw', height: '100vh' } : { x: 0, width: 'auto', height: 'auto' }}
+              exit={isFullScreen ? { scale: 0.9, opacity: 0 } : { x: '100%' }}
               transition={{ duration: DURATIONS.PREMIUM, ease: EASINGS.PREMIUM }}
-              className="fixed right-0 top-0 bottom-0 w-full md:w-[480px] bg-primary-950 border-l border-white/10 z-[101] shadow-2xl overflow-y-auto no-scrollbar"
+              className={`fixed right-0 top-0 bottom-0 z-[101] bg-primary-950 shadow-2xl overflow-y-auto no-scrollbar ${isFullScreen ? 'inset-0 w-full md:w-full' : 'w-full md:w-[480px] border-l border-white/10'}`}
             >
-              <div className="p-6 md:p-8 space-y-8 md:space-y-10">
+              <div className={`${isFullScreen ? 'h-full flex flex-col' : 'p-6 md:p-8 space-y-8 md:space-y-10'}`}>
                 {/* Header */}
-                <div className="flex justify-between items-center bg-white/[0.02] -mx-8 -mt-8 px-8 py-6 border-b border-white/5 mb-10">
+                <div className={`flex justify-between items-center bg-white/[0.02] border-b border-white/5 ${isFullScreen ? 'px-8 py-4' : '-mx-8 -mt-8 px-8 py-6 mb-10'}`}>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-ai-blue/10 flex items-center justify-center border border-ai-blue/20">
                       <FileText className="w-4 h-4 text-ai-blue" />
@@ -900,23 +1095,37 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                 </div>
 
                 {/* Doc Preview Thumbnail Area */}
-                <div className="relative aspect-[3/4] bg-white rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl group border border-white/5">
-                  <div className="absolute inset-0 overflow-auto no-scrollbar">
+                <div 
+                  ref={containerRef}
+                  className={`relative bg-white overflow-hidden shadow-2xl group border border-white/5 transition-all duration-500 ${isFullScreen ? 'flex-1 rounded-none' : 'aspect-[3/4] rounded-2xl md:rounded-3xl'}`}
+                  onWheel={handleWheel}
+                >
+                  <div className="absolute inset-0 overflow-hidden flex items-center justify-center">
                     <motion.div 
-                      className="w-full h-full flex items-center justify-center p-2"
-                      animate={{ scale: zoomScale }}
+                      className={`relative flex items-center justify-center ${zoomScale > 1 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                      animate={{ 
+                        scale: zoomScale,
+                        rotate: rotation
+                      }}
+                      drag={zoomScale > 1}
+                      dragConstraints={containerRef}
+                      dragElastic={0.1}
                       transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                      style={{ transformOrigin: 'top center' }}
+                      style={{ 
+                        transformOrigin: 'center center',
+                        width: '100%',
+                        height: '100%'
+                      }}
                     >
                       {selectedDoc.url && selectedDoc.type === 'PDF' ? (
-                        <div className="absolute inset-0 z-0">
+                        <div className="w-full h-full relative">
                           <iframe
-                            src={`${selectedDoc.url}#toolbar=0&navpanes=0&scrollbar=0`}
-                            className="w-full h-full border-none"
+                            src={`${selectedDoc.url}#toolbar=0&navpanes=0&scrollbar=0&page=${pdfPage}`}
+                            className="w-full h-full border-none pointer-events-none"
                             title="PDF Preview"
                           />
-                          {/* Overlay to prevent interaction and allow clicking the sidebar background */}
-                          <div className="absolute inset-0 bg-transparent z-10" />
+                          {/* Invisible overlay for dragging and zooming */}
+                          <div className="absolute inset-0 z-10 cursor-inherit" />
                         </div>
                       ) : selectedDoc.url && (selectedDoc.url.startsWith('data:image') || ['JPG', 'PNG', 'JPEG'].includes(selectedDoc.type)) ? (
                         <img 
@@ -954,9 +1163,9 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                   <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 z-40 bg-black/70 backdrop-blur-3xl border border-white/10 p-2 rounded-[24px] shadow-2xl ring-1 ring-white/5">
                     <button 
                       onClick={handleZoomOut}
-                      disabled={zoomScale <= 0.5}
+                      disabled={zoomScale <= 0.25}
                       className="w-10 h-10 rounded-2xl flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all active:scale-90 disabled:opacity-20 disabled:cursor-not-allowed group"
-                      title="Zoom arrière"
+                      title="Zoom arrière (Ctrl -)"
                     >
                       <ZoomOut className="w-4 h-4 group-hover:scale-110 transition-transform" />
                     </button>
@@ -964,20 +1173,66 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                     <button 
                       onClick={handleResetZoom}
                       className="px-4 h-10 rounded-2xl flex flex-col items-center justify-center hover:bg-white/10 transition-all group overflow-hidden relative"
-                      title="Réinitialiser"
+                      title="Réinitialiser (Ctrl 0)"
                     >
                       <span className="text-[10px] font-black text-ai-blue uppercase tracking-[0.2em]">{Math.round(zoomScale * 100)}%</span>
-                      <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-tighter opacity-0 group-hover:opacity-100 absolute bottom-0.5 transition-all">RESET</span>
+                      <span className="text-[7px] font-bold text-zinc-500 uppercase tracking-tighter absolute -bottom-4 group-hover:bottom-0.5 transition-all">RESET</span>
                     </button>
 
                     <button 
                       onClick={handleZoomIn}
-                      disabled={zoomScale >= 3}
+                      disabled={zoomScale >= 5}
                       className="w-10 h-10 rounded-2xl flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all active:scale-90 disabled:opacity-20 group"
-                      title="Zoom avant"
+                      title="Zoom avant (Ctrl +)"
                     >
                       <ZoomIn className="w-4 h-4 group-hover:scale-110 transition-transform" />
                     </button>
+
+                    <div className="w-[1px] h-6 bg-white/10 mx-1" />
+
+                    <button 
+                      onClick={handleRotate}
+                      className="w-10 h-10 rounded-2xl flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all active:scale-90 group"
+                      title="Rotation"
+                    >
+                      <RotateCw className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                    </button>
+
+                    <div className="w-[1px] h-6 bg-white/10 mx-1" />
+
+                    <button 
+                      onClick={() => setIsFullScreen(!isFullScreen)}
+                      className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all active:scale-95 group ${isFullScreen ? 'bg-ai-blue text-white shadow-[0_0_15px_rgba(79,124,255,0.4)]' : 'text-white/50 hover:text-white hover:bg-white/10 border border-white/5'}`}
+                      title={isFullScreen ? "Réduire" : "Plein écran"}
+                    >
+                      <Maximize className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    </button>
+
+                    {selectedDoc.type === 'PDF' && (
+                      <>
+                        <div className="w-[1px] h-6 bg-white/10 mx-1" />
+                        <div className="flex items-center gap-1.5 px-2">
+                          <button 
+                             onClick={() => setPdfPage(prev => Math.max(1, prev - 1))}
+                             className="w-8 h-8 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all active:scale-90"
+                             title="Page précédente (Gauche)"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <div className="flex flex-col items-center">
+                            <span className="text-[10px] font-black text-white/80 w-6 text-center">{pdfPage}</span>
+                            <span className="text-[6px] font-bold text-zinc-500 uppercase">PAGE</span>
+                          </div>
+                          <button 
+                             onClick={() => setPdfPage(prev => prev + 1)}
+                             className="w-8 h-8 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all active:scale-90"
+                             title="Page suivante (Droite)"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                   
                   {/* Subtle Scan Effect (only if not a real PDF loading or always for aesthetic) */}
@@ -1131,6 +1386,40 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                           )}
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Category Selection Section */}
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center px-1">
+                      <h4 className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.3em] leading-none">Classement</h4>
+                      <div className="text-[8px] font-black text-ai-blue uppercase tracking-widest bg-ai-blue/5 px-2 py-0.5 rounded-full border border-ai-blue/10">Catégorie</div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {categoriesList.map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => handleSetCategory(cat)}
+                          className={`px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border ${
+                            selectedDoc.category === cat 
+                              ? 'bg-ai-blue/20 border-ai-blue/40 text-white shadow-[0_0_15px_rgba(79,124,255,0.15)]' 
+                              : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/20'
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => handleSetCategory('')}
+                        className={`px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border ${
+                          !selectedDoc.category 
+                            ? 'bg-white/10 border-white/20 text-white' 
+                            : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/20'
+                        }`}
+                      >
+                        Aucune
+                      </button>
                     </div>
                   </div>
 

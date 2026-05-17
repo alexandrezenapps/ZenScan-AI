@@ -7,11 +7,46 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import sharp from "sharp";
+import { analyzeDocument, chatWithDocuments, generateSmartIcon } from "./server/gemini.ts";
 
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+
+// AI API Routes
+app.post("/api/ai/analyze", async (req, res) => {
+  try {
+    const { image, context } = req.body;
+    const result = await analyzeDocument(image, context);
+    res.json(result);
+  } catch (error) {
+    console.error("AI Analysis Error:", error);
+    res.status(500).json({ error: "Failed to analyze document" });
+  }
+});
+
+app.post("/api/ai/chat", async (req, res) => {
+  try {
+    const { message, history, contextDocs } = req.body;
+    const result = await chatWithDocuments(message, history, contextDocs);
+    res.json({ response: result });
+  } catch (error) {
+    console.error("AI Chat Error:", error);
+    res.status(500).json({ error: "Failed to process chat" });
+  }
+});
+
+app.post("/api/ai/generate-asset", async (req, res) => {
+  try {
+    const { prompt, aspectRatio } = req.body;
+    const base64 = await generateSmartIcon(prompt, aspectRatio);
+    res.json({ image: `data:image/png;base64,${base64}` });
+  } catch (error) {
+    console.error("AI Generation Error:", error);
+    res.status(500).json({ error: "Failed to generate image" });
+  }
+});
 
 // Definitions for dynamic icons
 const COLORS: Record<string, string> = {

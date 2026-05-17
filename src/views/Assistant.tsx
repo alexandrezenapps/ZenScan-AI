@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Bot, User, Search, Paperclip, ArrowUp, Sparkles, Receipt, FileText, Mail } from 'lucide-react';
 import { AppView, ChatMessage } from '../types';
 import { MOCK_MESSAGES } from '../constants';
-import { chatWithAI } from '../services/geminiService';
 
 interface AssistantProps {
   onNavigate: (view: AppView) => void;
@@ -18,7 +17,21 @@ export default function Assistant({ onNavigate }: AssistantProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES);
   const [inputValue, setInputValue] = useState('');
   const [isAnswering, setIsAnswering] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -29,10 +42,10 @@ export default function Assistant({ onNavigate }: AssistantProps) {
   }, [messages, isAnswering]);
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || isAnswering) return;
 
     const userMessage: ChatMessage = {
-      id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       role: 'user',
       content: inputValue,
       timestamp: new Date(),
@@ -44,18 +57,36 @@ export default function Assistant({ onNavigate }: AssistantProps) {
     setIsAnswering(true);
 
     try {
-      // Prepare history for Gemini
-      const history = messages.map(m => ({
-        role: m.role,
-        content: m.content
-      }));
+      if (isOffline) {
+        // Simulate local AI response when offline
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        const aiMessage: ChatMessage = {
+          id: `ai-offline-${Date.now()}`,
+          role: 'assistant',
+          content: "Je fonctionne actuellement en mode local limité car vous êtes hors-ligne. Je ne peux pas accéder à vos documents cloud ni effectuer d'analyses avancées pour le moment.",
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+        return;
+      }
 
-      const aiResponse = await chatWithAI(currentInput, history);
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: currentInput,
+          history: messages.map(m => ({ role: m.role === 'assistant' ? 'ai' : 'user', content: m.content })),
+          contextDocs: [] // Could be populated if we want global search here
+        }),
+      });
+
+      if (!response.ok) throw new Error('AI Response Failed');
+      const data = await response.json();
       
       const aiMessage: ChatMessage = {
-        id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `ai-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         role: 'assistant',
-        content: aiResponse || "Désolé, je n'ai pas pu générer de réponse.",
+        content: data.response,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMessage]);
@@ -64,7 +95,7 @@ export default function Assistant({ onNavigate }: AssistantProps) {
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: "Une erreur est survenue lors de la communication avec Zen AI. Veuillez réessayer.",
+        content: "Désolé, je rencontre des difficultés temporaires. Veuillez réessayer.",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -92,8 +123,28 @@ export default function Assistant({ onNavigate }: AssistantProps) {
                <p className="text-[8px] md:text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em]">Cerveau Documentaire</p>
              </div>
           </div>
-          <div className="badge-ai animate-pulse text-[9px] md:text-xs">✨ ONLINE</div>
+          <div className={`badge-ai ${isOffline ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' : 'animate-pulse'} text-[9px] md:text-xs`}>
+            {isOffline ? '⚠️ OFFLINE' : '✨ ONLINE'}
+          </div>
         </div>
+        
+        <AnimatePresence>
+          {isOffline && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-3">
+                <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                <p className="text-[10px] md:text-xs text-amber-200/80 font-medium">
+                  Mode hors-ligne actif. Les réponses de l'IA sont limitées au moteur local et peuvent être simulées.
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Chat Area */}

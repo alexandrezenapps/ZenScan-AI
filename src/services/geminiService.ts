@@ -5,7 +5,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 export async function chatWithAI(message: string, history: { role: 'user' | 'assistant', content: string }[] = []) {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       contents: [
         ...(history || []).map(m => ({ 
           role: m.role === 'assistant' ? 'model' : 'user', 
@@ -28,7 +28,7 @@ export async function chatWithAI(message: string, history: { role: 'user' | 'ass
 export async function analyzeDocument(content: string) {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       contents: `Analyse ce texte extrait d'un document et extrais les informations clés (type, montant, date, entités) au format JSON simplifié. Ne renvoie QUE le JSON sans markdown. : \n\n${content}`,
       config: {
         responseMimeType: "application/json",

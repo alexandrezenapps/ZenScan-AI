@@ -15,10 +15,12 @@
 
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { AppView, DocumentMetadata } from './types';
 import { updateAppMeta } from './lib/icons';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
+import AIChatBot from './components/AIChatBot';
 import { useAuth } from './context/AuthContext';
 import { Loader2, WifiOff } from 'lucide-react';
 
@@ -41,13 +43,18 @@ const LoadingFallback = () => (
 );
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<AppView>(AppView.SPLASH);
+  const navigate = useNavigate();
+  const location = useLocation();
   const [selectedDocument, setSelectedDocument] = useState<DocumentMetadata | null>(null);
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [scannedLocation, setScannedLocation] = useState<{ latitude: number, longitude: number } | null>(null);
   const [ocrLanguage, setOcrLanguage] = useState<string>('Français');
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const { user, loading } = useAuth();
+
+  const currentPath = location.pathname;
+  const isSplashOrOnboarding = currentPath === '/splash' || currentPath === '/onboarding';
+  const showNav = currentPath !== '/splash' && currentPath !== '/onboarding';
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -76,14 +83,14 @@ export default function App() {
           storageService.syncUserProfile();
         });
         
-        if (currentView === AppView.SPLASH || currentView === AppView.ONBOARDING) {
-          setCurrentView(AppView.HOME);
+        if (isSplashOrOnboarding) {
+          navigate('/home');
         }
-      } else if (currentView !== AppView.SPLASH && currentView !== AppView.ONBOARDING) {
-        setCurrentView(AppView.ONBOARDING);
+      } else if (!isSplashOrOnboarding) {
+        navigate('/onboarding');
       }
     }
-  }, [user, loading, currentView]);
+  }, [user, loading, isSplashOrOnboarding, navigate]);
 
   if (loading) {
     return (
@@ -93,59 +100,14 @@ export default function App() {
     );
   }
 
-  const renderView = () => {
-    switch (currentView) {
-      case 'SPLASH':
-        return <Splash onFlush={() => setCurrentView('ONBOARDING')} />;
-      case 'ONBOARDING':
-        return <Onboarding onComplete={() => setCurrentView('HOME')} />;
-      case 'HOME':
-        return <Home onNavigate={setCurrentView} />;
-      case 'LIBRARY':
-        return <Library onNavigate={setCurrentView} onSelectDocument={setSelectedDocument} />;
-      case 'SCANNER':
-        return (
-          <Scanner 
-            onNavigate={setCurrentView} 
-            onScanComplete={(img, lang, loc) => {
-              setScannedImage(img || null);
-              if (lang) setOcrLanguage(lang);
-              if (loc) setScannedLocation(loc);
-              setCurrentView('OCR');
-            }} 
-          />
-        );
-      case 'OCR':
-        return (
-          <OCRAnalysis 
-            onNavigate={setCurrentView} 
-            onComplete={() => {
-              setScannedImage(null);
-              setScannedLocation(null);
-              setCurrentView('EDITOR');
-            }} 
-            onSelectDocument={setSelectedDocument}
-            scannedImage={scannedImage}
-            scannedLocation={scannedLocation}
-            initialLanguage={ocrLanguage}
-          />
-        );
-      case 'EDITOR':
-        return <Editor onNavigate={setCurrentView} document={selectedDocument} />;
-      case 'AI':
-        return <Assistant onNavigate={setCurrentView} />;
-      case 'SETTINGS':
-        return <Settings onNavigate={setCurrentView} />;
-      default:
-        return <Home onNavigate={setCurrentView} />;
-    }
+  const handleNavigate = (view: AppView | string) => {
+    const path = view.toLowerCase();
+    navigate(`/${path}`);
   };
-
-  const showNav = currentView !== 'SPLASH' && currentView !== 'ONBOARDING';
 
   return (
     <div className="min-h-screen bg-primary-900 overflow-x-hidden">
-      {showNav && currentView !== 'SCANNER' && currentView !== 'OCR' && <Navbar />}
+      {showNav && currentPath !== '/scanner' && currentPath !== '/ocr' && <Navbar />}
 
       <AnimatePresence>
         {isOffline && (
@@ -163,18 +125,61 @@ export default function App() {
 
       <main className={showNav ? "pb-24 md:pb-32" : ""}>
         <AnimatePresence mode="wait">
-          <Suspense fallback={<LoadingFallback />}>
-            {renderView()}
-          </Suspense>
+          <motion.div 
+            key={location.pathname}
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+          >
+            <Suspense fallback={<LoadingFallback />}>
+              <Routes location={location}>
+            <Route path="/splash" element={<Splash onFlush={() => navigate('/onboarding')} />} />
+            <Route path="/onboarding" element={<Onboarding onComplete={() => navigate('/home')} />} />
+            <Route path="/home" element={<Home onNavigate={handleNavigate} />} />
+            <Route path="/library" element={<Library onNavigate={handleNavigate} onSelectDocument={setSelectedDocument} />} />
+            <Route path="/scanner" element={
+              <Scanner 
+                onNavigate={handleNavigate} 
+                onScanComplete={(img, lang, loc) => {
+                  setScannedImage(img || null);
+                  if (lang) setOcrLanguage(lang);
+                  if (loc) setScannedLocation(loc);
+                  navigate('/ocr');
+                }} 
+              />
+            } />
+            <Route path="/ocr" element={
+              <OCRAnalysis 
+                onNavigate={handleNavigate} 
+                onComplete={() => {
+                  setScannedImage(null);
+                  setScannedLocation(null);
+                  navigate('/editor');
+                }} 
+                onSelectDocument={setSelectedDocument}
+                scannedImage={scannedImage}
+                scannedLocation={scannedLocation}
+                initialLanguage={ocrLanguage}
+              />
+            } />
+            <Route path="/editor" element={<Editor onNavigate={handleNavigate} document={selectedDocument} />} />
+            <Route path="/ai" element={<Assistant onNavigate={handleNavigate} />} />
+            <Route path="/settings" element={<Settings onNavigate={handleNavigate} />} />
+            <Route path="/" element={<Navigate to={user ? "/home" : "/splash"} replace />} />
+          </Routes>
+            </Suspense>
+          </motion.div>
         </AnimatePresence>
       </main>
 
       {showNav && (
         <div className="fixed bottom-0 left-0 right-0 z-[100] pointer-events-none">
+          <AIChatBot />
           <div className="pointer-events-auto">
             <BottomNav 
-              currentView={currentView as AppView} 
-              onNavigate={setCurrentView} 
+              currentView={currentPath.substring(1).toUpperCase() as AppView} 
+              onNavigate={handleNavigate} 
               onScan={() => {
                 window.dispatchEvent(new CustomEvent('zen-trigger-scan'));
               }}

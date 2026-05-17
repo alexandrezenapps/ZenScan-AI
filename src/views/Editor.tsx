@@ -9,9 +9,11 @@ import {
   Crop, RotateCw, Filter, FileText, Check, Save, 
   Download, MoreHorizontal, PenTool, Sparkles, 
   FileSearch, Languages, X, Plus, Trash2, ChevronLeft, ChevronRight,
-  Share2, Mail, Copy, CheckCircle2, FileDown, CloudOff, Cloud, MapPin
+  Share2, Mail, Copy, CheckCircle2, FileDown, CloudOff, Cloud, MapPin,
+  ArrowUp, ArrowDown
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+import { Reorder } from 'motion/react';
 import { AppView, DocumentMetadata } from '../types';
 import { storageService } from '../services/storageService';
 
@@ -315,7 +317,12 @@ export default function Editor({ onNavigate, document }: EditorProps) {
     setSigned(true);
     setActiveTool(null);
   };
-  const [pages, setPages] = useState<number[]>([1, 2, 3]);
+
+  const [pages, setPages] = useState<{id: string, rotation: number}[]>([
+    { id: 'page-1', rotation: 0 },
+    { id: 'page-2', rotation: 0 },
+    { id: 'page-3', rotation: 0 }
+  ]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   
@@ -339,7 +346,8 @@ export default function Editor({ onNavigate, document }: EditorProps) {
   ];
 
   const addPage = () => {
-    setPages(prev => [...prev, prev.length + 1]);
+    const newId = `page-${Date.now()}`;
+    setPages(prev => [...prev, { id: newId, rotation: 0 }]);
     setCurrentPageIndex(pages.length);
   };
 
@@ -350,6 +358,18 @@ export default function Editor({ onNavigate, document }: EditorProps) {
     if (currentPageIndex >= newPages.length) {
       setCurrentPageIndex(newPages.length - 1);
     }
+  };
+
+  const rotateCurrentPage = () => {
+    setPages(prev => prev.map((p, i) => 
+      i === currentPageIndex ? { ...p, rotation: (p.rotation + 90) % 360 } : p
+    ));
+  };
+
+  const rotatePageAt = (index: number) => {
+    setPages(prev => prev.map((p, i) => 
+      i === index ? { ...p, rotation: (p.rotation + 90) % 360 } : p
+    ));
   };
 
   return (
@@ -433,7 +453,7 @@ export default function Editor({ onNavigate, document }: EditorProps) {
           <div className="h-6 w-px bg-white/10 mx-2" />
           
           <ToolbarButton icon={Crop} label="Crop" onClick={() => alert('Outil de recadrage activé')} />
-          <ToolbarButton icon={RotateCw} label="Rotate" onClick={() => alert('Image pivotée de 90°')} />
+          <ToolbarButton icon={RotateCw} label="Rotate" onClick={rotateCurrentPage} />
           <ToolbarButton 
             icon={Filter} 
             label="Filters" 
@@ -522,9 +542,9 @@ export default function Editor({ onNavigate, document }: EditorProps) {
             </div>
 
             <motion.div 
-              key={currentPageIndex}
+              key={`${currentPageIndex}-${pages[currentPageIndex]?.rotation}`}
               initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
+              animate={{ opacity: 1, scale: 1, rotate: pages[currentPageIndex]?.rotation || 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="bg-white w-full max-w-[320px] md:max-w-[420px] aspect-[1/1.41] shadow-[0_40px_70px_rgba(0,0,0,0.4)] rounded-sm overflow-hidden relative"
             >
@@ -535,6 +555,7 @@ export default function Editor({ onNavigate, document }: EditorProps) {
                       src={document.url} 
                       className="w-full h-full border-none"
                       title="PDF Preview"
+                      style={{ transform: `rotate(${pages[currentPageIndex]?.rotation || 0}deg)` }}
                     />
                   </div>
                 ) : (
@@ -554,7 +575,7 @@ export default function Editor({ onNavigate, document }: EditorProps) {
                   <div className="flex justify-between items-start">
                      <div className="h-6 md:h-8 w-1/3 bg-gray-200 rounded"></div>
                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-ai-blue/5 border border-ai-blue/10 flex items-center justify-center text-[9px] md:text-[10px] font-bold text-ai-blue">
-                       #{pages[currentPageIndex]}
+                       #{pages[currentPageIndex]?.id.split('-')[1] || currentPageIndex + 1}
                      </div>
                   </div>
                   <div className="space-y-2 md:space-y-3">
@@ -640,7 +661,7 @@ export default function Editor({ onNavigate, document }: EditorProps) {
           </div>
 
           {/* Multi-Page Thumbnails */}
-          <div className="bg-primary-800/40 backdrop-blur-xl border border-white/5 rounded-[32px] p-6 overflow-hidden">
+          <div className="bg-primary-800/40 backdrop-blur-xl border border-white/5 rounded-[32px] p-6 overflow-visible">
              <div className="flex items-center justify-between mb-4 px-2">
                 <p className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Pages du Document</p>
                 <div className="flex items-center gap-2">
@@ -648,54 +669,76 @@ export default function Editor({ onNavigate, document }: EditorProps) {
                 </div>
              </div>
              
-             <div className="flex items-start gap-4 overflow-x-auto no-scrollbar pb-2">
+             <Reorder.Group 
+                axis="x" 
+                values={pages} 
+                onReorder={setPages}
+                className="flex items-start gap-4 overflow-x-auto no-scrollbar pb-6 px-1"
+             >
                 <AnimatePresence mode="popLayout">
                   {pages.map((page, idx) => (
-                    <motion.div
-                      key={`page-${page}`}
+                    <Reorder.Item
+                      key={page.id}
+                      value={page}
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.8 }}
-                      layout
-                      className="flex flex-col items-center gap-3 group/thumb"
+                      className="flex flex-col items-center gap-2 group/thumb relative"
                     >
                       <button 
                         onClick={() => setCurrentPageIndex(idx)}
                         className={`relative w-24 aspect-[1/1.41] rounded-lg overflow-hidden transition-all border-2 ${currentPageIndex === idx ? 'border-ai-blue ai-glow scale-105 shadow-xl' : 'border-white/5 hover:border-white/20'}`}
                       >
                          {idx === 0 && document?.url ? (
-                           <img src={document.url} className="w-full h-full object-cover opacity-60" alt="" referrerPolicy="no-referrer" />
+                           <img 
+                              src={document.url} 
+                              className="w-full h-full object-cover opacity-60" 
+                              alt="" 
+                              referrerPolicy="no-referrer" 
+                              style={{ transform: `rotate(${page.rotation}deg)` }}
+                           />
                          ) : (
-                           <div className="absolute inset-0 bg-white p-2 flex flex-col gap-1.5 opacity-40">
+                           <div className="absolute inset-0 bg-white p-2 flex flex-col gap-1.5 opacity-40" style={{ transform: `rotate(${page.rotation}deg)` }}>
                              <div className="h-1.5 w-1/2 bg-gray-200 rounded-full" />
                              <div className="h-1 w-full bg-gray-100 rounded-full" />
                              <div className="h-1 w-full bg-gray-100 rounded-full" />
                              <div className="h-1 w-4/5 bg-gray-100 rounded-full" />
                            </div>
                          )}
-                         <div className="absolute top-1 right-1 w-4 h-4 bg-ai-blue rounded-full flex items-center justify-center text-[8px] font-bold text-white">
+                         <div className="absolute top-1 right-1 w-4 h-4 bg-ai-blue rounded-full flex items-center justify-center text-[8px] font-bold text-white z-10">
                            {idx + 1}
                          </div>
                       </button>
-                      <button 
-                        onClick={() => removePage(idx)}
-                        className="opacity-0 group-hover/thumb:opacity-100 p-1.5 rounded-full hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </motion.div>
+                      
+                      <div className="flex items-center gap-1 opacity-0 group-hover/thumb:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => rotatePageAt(idx)}
+                          className="p-1.5 rounded-lg bg-white/5 hover:bg-ai-blue/20 text-gray-500 hover:text-ai-blue transition-all"
+                          title="Faire pivoter"
+                        >
+                          <RotateCw className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          onClick={() => removePage(idx)}
+                          className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-all"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </Reorder.Item>
                   ))}
                   
                   <motion.button 
                     layout
                     onClick={addPage}
-                    className="w-24 aspect-[1/1.41] rounded-xl border-2 border-white/5 border-dashed flex flex-col items-center justify-center gap-2 hover:bg-white/5 hover:border-ai-blue/30 transition-all group shrink-0"
+                    className="w-24 aspect-[1/1.41] rounded-xl border-2 border-white/5 border-dashed flex flex-col items-center justify-center gap-2 hover:bg-white/5 hover:border-ai-blue/30 transition-all group shrink-0 mt-0"
                   >
                     <Plus className="w-6 h-6 text-gray-600 group-hover:text-ai-blue" />
                     <span className="text-[8px] font-bold text-gray-600 uppercase tracking-widest">Add Page</span>
                   </motion.button>
                 </AnimatePresence>
-             </div>
+             </Reorder.Group>
           </div>
         </div>
 

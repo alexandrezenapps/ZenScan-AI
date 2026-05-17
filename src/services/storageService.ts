@@ -203,7 +203,7 @@ class StorageService {
         lastActive: serverTimestamp()
       }, { merge: true });
     } catch (err) {
-      console.error("Profile sync failed:", err);
+      handleFirestoreError(err, OperationType.WRITE, profilePath);
     }
   }
 }
