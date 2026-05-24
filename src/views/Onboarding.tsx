@@ -14,9 +14,22 @@ interface OnboardingProps {
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState(0);
-  const { signInWithGoogle, user } = useAuth();
+  const { signInWithGoogle, signInAsGuest, user } = useAuth();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleGuestLogin = async () => {
+    setError(null);
+    try {
+      setIsLoggingIn(true);
+      await signInAsGuest();
+    } catch (err: any) {
+      console.error("Guest login failed", err);
+      setError("La connexion invité a échoué. Veuillez réessayer.");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
 
   const slides = [
     {
@@ -75,6 +88,28 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   return (
     <div className="fixed inset-0 z-[90] bg-primary-950 flex flex-col items-center justify-between px-8 py-20 overflow-hidden">
+      {/* Top action/skip bar */}
+      <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-20">
+        <span className="text-[10px] font-black tracking-[0.3em] uppercase text-zinc-500">ZenScan</span>
+        {step < slides.length - 1 && (
+          <div className="flex gap-2">
+            <button
+              onClick={handleGuestLogin}
+              disabled={isLoggingIn}
+              className="px-3 py-1.5 rounded-lg border border-white/5 bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer"
+            >
+              Invité
+            </button>
+            <button
+              onClick={() => setStep(slides.length - 1)}
+              className="px-3 py-1.5 rounded-lg border border-white/10 bg-transparent text-zinc-400 hover:text-white font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer"
+            >
+              Passer
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Decorative Background */}
       <motion.div 
         animate={{ 
@@ -168,6 +203,16 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             </>
           )}
         </button>
+
+        {step === slides.length - 1 && !user && (
+          <button
+            onClick={handleGuestLogin}
+            disabled={isLoggingIn}
+            className="w-full h-12 rounded-xl border border-white/10 hover:border-white/20 hover:bg-white/5 text-zinc-400 hover:text-white font-bold text-xs uppercase tracking-widest transition-all cursor-pointer flex items-center justify-center disabled:opacity-50"
+          >
+            Continuer sans compte (Mode Invité)
+          </button>
+        )}
       </div>
     </div>
   );

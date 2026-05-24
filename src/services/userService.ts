@@ -12,8 +12,8 @@ export const userService = {
   async writeUserData(data: Record<string, any>) {
     const user = auth.currentUser;
 
-    if (!user) {
-      throw new Error("Aucun utilisateur connecté.");
+    if (!user || !user.uid) {
+      throw new Error("Aucun utilisateur connecté ou UID manquant.");
     }
 
     try {
@@ -40,6 +40,7 @@ export const userService = {
    * Récupère les données d'un utilisateur
    */
   async getUserData(userId: string) {
+    if (!userId) return null;
     try {
       const userRef = doc(db, 'users', userId);
       const userSnap = await getDoc(userRef);

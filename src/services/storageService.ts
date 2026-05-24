@@ -34,6 +34,19 @@ class StorageService {
   };
   private activeSyncPromise: Promise<void> | null = null;
 
+  private getCurrentUser() {
+    if (auth.currentUser) return auth.currentUser;
+    const stored = localStorage.getItem('zenScanLocalGuestUser');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }
+
   constructor() {
     this.initLocalDb().then(() => {
       this.calculateSyncRatios();
@@ -100,6 +113,12 @@ class StorageService {
     window.addEventListener('offline', () => {
       this.updateSyncStatus({ state: 'offline' });
     });
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('zen-scan-guest-auth-changed', () => {
+        this.sync().catch(err => console.error("[Storage] Guest status update sync failed:", err));
+      });
+    }
   }
 
   subscribeSyncStatus(listener: (status: SyncStatus) => void) {
@@ -133,11 +152,17 @@ class StorageService {
   }
 
   async sync(): Promise<void> {
-    const userId = auth.currentUser?.uid;
-    const isCloudSyncEnabled = localStorage.getItem('zenScanCloudSync') !== 'false';
+    const user = this.getCurrentUser();
+    const userId = user?.uid;
+    const isCloudSyncEnabled = localStorage.getItem('zenScanCloudSync') !== 'false' && !(userId && userId.startsWith('guest_'));
 
     if (!userId) {
       this.updateSyncStatus({ state: 'pending', errorMessage: 'Veuillez vous connecter pour activer la synchronisation.' });
+      return;
+    }
+
+    if (userId.startsWith('guest_')) {
+      this.updateSyncStatus({ state: 'disabled' });
       return;
     }
 
@@ -341,8 +366,9 @@ class StorageService {
   }
 
   async saveDocument(document: DocumentMetadata) {
-    const userId = auth.currentUser?.uid;
-    const isCloudSyncEnabled = localStorage.getItem('zenScanCloudSync') !== 'false';
+    const user = this.getCurrentUser();
+    const userId = user?.uid;
+    const isCloudSyncEnabled = localStorage.getItem('zenScanCloudSync') !== 'false' && !(userId && userId.startsWith('guest_'));
     const now = new Date().toISOString();
     
     const documentCopy = { 
@@ -435,8 +461,9 @@ class StorageService {
   }
 
   async getDocuments(): Promise<DocumentMetadata[]> {
-    const userId = auth.currentUser?.uid;
-    const isCloudSyncEnabled = localStorage.getItem('zenScanCloudSync') !== 'false';
+    const user = this.getCurrentUser();
+    const userId = user?.uid;
+    const isCloudSyncEnabled = localStorage.getItem('zenScanCloudSync') !== 'false' && !(userId && userId.startsWith('guest_'));
     let docs: any[] = [];
 
     // 1. Always start with Local Storage for instant UI (Rapid)
@@ -470,8 +497,9 @@ class StorageService {
   }
 
   async deleteDocument(docId: string) {
-    const userId = auth.currentUser?.uid;
-    const isCloudSyncEnabled = localStorage.getItem('zenScanCloudSync') !== 'false';
+    const user = this.getCurrentUser();
+    const userId = user?.uid;
+    const isCloudSyncEnabled = localStorage.getItem('zenScanCloudSync') !== 'false' && !(userId && userId.startsWith('guest_'));
 
     // 1. Delete from Local
     try {
@@ -505,8 +533,8 @@ class StorageService {
 
   // Sync user profile for better management
   async syncUserProfile() {
-    const user = auth.currentUser;
-    if (!user) return;
+    const user = this.getCurrentUser();
+    if (!user || !user.uid || user.uid.startsWith('guest_')) return;
 
     const profilePath = `users/${user.uid}`;
     try {

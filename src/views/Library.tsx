@@ -2052,6 +2052,51 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                     ))}
                   </div>
                 </div>
+
+                {/* Actions Rapides */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 px-1">
+                    <Zap className="w-4 h-4 text-amber-400 shadow-[0_0_8px_#F59E0B]" />
+                    <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Actions Rapides</h4>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2.5">
+                     <button
+                       onClick={handleQuickArchiveAll}
+                       className="w-full h-11 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between px-4 text-xs font-bold text-zinc-300 hover:border-ai-blue/30 hover:bg-ai-blue/5 hover:text-white transition-all group cursor-pointer"
+                       title="Mettre tous les documents dans la catégorie Archive"
+                     >
+                        <div className="flex items-center gap-2.5">
+                           <Archive className="w-4 h-4 text-zinc-500 group-hover:text-ai-blue transition-colors" />
+                           <span>Archiver tout</span>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-ai-blue group-hover:translate-x-0.5 transition-all" />
+                     </button>
+
+                     <button
+                       onClick={handleQuickClearAllTags}
+                       className="w-full h-11 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between px-4 text-xs font-bold text-zinc-300 hover:border-red-400/30 hover:bg-red-400/5 hover:text-white transition-all group cursor-pointer"
+                       title="Enlever les tags de tous les documents"
+                     >
+                        <div className="flex items-center gap-2.5">
+                           <Trash2 className="w-4 h-4 text-zinc-500 group-hover:text-red-400 transition-colors" />
+                           <span>Effacer les Tags</span>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-red-400 group-hover:translate-x-0.5 transition-all" />
+                     </button>
+
+                     <button
+                       onClick={handleQuickBulkExportPdf}
+                       className="w-full h-11 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between px-4 text-xs font-bold text-zinc-300 hover:border-emerald-400/30 hover:bg-emerald-400/5 hover:text-white transition-all group cursor-pointer"
+                       title="Télécharger tous les fichiers PDF"
+                     >
+                        <div className="flex items-center gap-2.5">
+                           <FileText className="w-4 h-4 text-zinc-500 group-hover:text-emerald-400 transition-colors" />
+                           <span>Export PDF groupé</span>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+                     </button>
+                  </div>
+                </div>
               </div>
 
               <div className="p-8 pt-6 border-t border-white/5 bg-white/[0.01]">
