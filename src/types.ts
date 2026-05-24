@@ -11,6 +11,13 @@ export enum ScanStatus {
   FAILED = 'FAILED'
 }
 
+export interface DetectedObject {
+  name_en: string;
+  name_fr: string;
+  name_zh: string;
+  boundingBox: [number, number, number, number];
+}
+
 export interface DocumentMetadata {
   id: string;
   userId?: string;
@@ -32,6 +39,7 @@ export interface DocumentMetadata {
     longitude: number;
     address?: string;
   };
+  detectedObjects?: DetectedObject[];
 }
 
 export interface ChatMessage {

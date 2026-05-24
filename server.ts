@@ -7,7 +7,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import sharp from "sharp";
-import { analyzeDocument, chatWithDocuments, generateSmartIcon } from "./server/gemini.ts";
+import { analyzeDocument, chatWithDocuments, generateSmartIcon, suggestTagsForDocument, detectObjectsInImage } from "./server/gemini.ts";
 
 const app = express();
 const PORT = 3000;
@@ -15,6 +15,27 @@ const PORT = 3000;
 app.use(express.json({ limit: '50mb' }));
 
 // AI API Routes
+app.post("/api/ai/detect-objects", async (req, res) => {
+  try {
+    const { image } = req.body;
+    const result = await detectObjectsInImage(image);
+    res.json({ objects: result });
+  } catch (error) {
+    console.error("AI Object Detection Error:", error);
+    res.status(500).json({ error: "Failed to detect objects" });
+  }
+});
+
+app.post("/api/ai/suggest-tags", async (req, res) => {
+  try {
+    const { documentName, contentSnippet, category, currentTags } = req.body;
+    const result = await suggestTagsForDocument(documentName, contentSnippet, category, currentTags);
+    res.json({ tags: result });
+  } catch (error) {
+    console.error("AI Tag Suggestions Error:", error);
+    res.status(500).json({ error: "Failed to suggest tags" });
+  }
+});
 app.post("/api/ai/analyze", async (req, res) => {
   try {
     const { image, context } = req.body;

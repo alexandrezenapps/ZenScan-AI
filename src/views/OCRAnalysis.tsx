@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, Database, Tag, Lightbulb, ArrowRight, Activity, Cpu, Binary, Layers, Search, ShieldCheck, Box, Loader2, Mail, Share2, FileText, Languages, RefreshCw, WifiOff, Zap } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import Tesseract from 'tesseract.js';
-import { AppView, DocumentMetadata } from '../types';
+import { AppView, DocumentMetadata, DetectedObject } from '../types';
 import { GlassCard, AIOrb } from '../components/PremiumComponents';
 import { useAuth } from '../context/AuthContext';
 import { storageService } from '../services/storageService';
@@ -20,6 +20,7 @@ interface OCRAnalysisProps {
   scannedImage?: string | null;
   scannedLocation?: { latitude: number, longitude: number } | null;
   initialLanguage?: string;
+  scannedObjects?: DetectedObject[];
 }
 
 // Memoized components for better performance
@@ -86,7 +87,7 @@ const SemanticItem = React.memo(({ item, isDiscovered, onUpdate }: { item: any, 
   );
 });
 
-export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, scannedImage, scannedLocation, initialLanguage }: OCRAnalysisProps) {
+export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, scannedImage, scannedLocation, initialLanguage, scannedObjects }: OCRAnalysisProps) {
   // Keep a local copy of the image to prevent it from disappearing during exit animations
   const [localImage, setLocalImage] = useState<string | null>(scannedImage || null);
   const [isEditing, setIsEditing] = useState(true); // Start with editing phase
@@ -481,7 +482,8 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
           type: semanticData.find(d => d.id === 'type')?.value || detectedType,
           amount: semanticData.find(d => d.id === 'amount')?.value || '124,50 €',
           date: semanticData.find(d => d.id === 'date')?.value || '2026-05-09'
-        }
+        },
+        detectedObjects: scannedObjects
       };
 
       await storageService.saveDocument(newDoc);
@@ -612,16 +614,42 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
         {/* Diagnostic Layers (Sidebar on desktop) */}
         <div className="hidden md:flex md:col-span-3 flex-col gap-3">
           {[
-            { label: 'GRAYSCALE', icon: Layers, p: 20 },
-            { label: 'THRESHOLD', icon: Box, p: 40 },
-            { label: 'DENOISE', icon: Binary, p: 60 },
-            { label: 'VECTORIZE', icon: Activity, p: 80 }
+            { id: 'GRAYSCALE', icon: Layers, p: 20, desc: 'Suppression chromatique' },
+            { id: 'THRESHOLD', icon: Box, p: 40, desc: 'Binarisation Adaptive' },
+            { id: 'DENOISE', icon: Binary, p: 60, desc: 'Réduction de bruit' },
+            { id: 'VECTORIZE', icon: Activity, p: 80, desc: 'Vectorisation texte' }
           ].map((layer) => (
-            <div key={layer.label} className={`p-4 rounded-2xl glass-card flex flex-col items-center justify-center gap-2 border transition-all duration-500 ${progress >= layer.p ? 'border-ai-blue/30 bg-ai-blue/5' : 'border-white/5 opacity-40'}`}>
-              <layer.icon className={`w-5 h-5 ${progress >= layer.p ? 'text-ai-blue' : 'text-zinc-500'}`} />
-              <span className="text-[7px] font-black tracking-widest text-zinc-500">{layer.label}</span>
-              {progress >= layer.p && <div className="w-1 h-1 rounded-full bg-ai-blue animate-pulse" />}
-            </div>
+            <motion.div 
+              key={layer.id} 
+              animate={{ 
+                borderColor: progress >= layer.p ? 'rgba(79, 124, 255, 0.4)' : 'rgba(255, 255, 255, 0.05)',
+                backgroundColor: progress >= layer.p ? 'rgba(79, 124, 255, 0.05)' : 'rgba(255, 255, 255, 0.02)'
+              }}
+              className={`p-4 rounded-3xl glass-card flex flex-col items-center justify-center gap-2 border transition-all duration-700 ${progress < layer.p ? 'opacity-40 grayscale' : ''}`}
+            >
+              <div className="relative">
+                <layer.icon className={`w-6 h-6 ${progress >= layer.p ? 'text-ai-blue' : 'text-zinc-500'}`} />
+                {progress >= layer.p && (
+                  <motion.div 
+                    layoutId={`glow-${layer.id}`}
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1.5 }}
+                    className="absolute inset-0 bg-ai-blue/20 blur-md rounded-full -z-10"
+                  />
+                )}
+              </div>
+              <div className="text-center">
+                <p className="text-[8px] font-black tracking-widest text-white uppercase">{layer.id}</p>
+                <p className="text-[6px] font-bold text-zinc-500 uppercase tracking-tighter mt-0.5">{layer.desc}</p>
+              </div>
+              {progress >= layer.p && (
+                <motion.div 
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="w-1.5 h-1.5 rounded-full bg-ai-blue shadow-[0_0_8px_#4F7CFF]" 
+                />
+              )}
+            </motion.div>
           ))}
         </div>
 
@@ -948,29 +976,43 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
                 {saveError}
               </motion.div>
             )}
-            <div className="flex justify-between items-end px-1">
-              <div className="space-y-1 flex-1">
-                <div className="flex items-center gap-1.5 md:gap-2">
-                   <Cpu className="w-3.5 h-3.5 md:w-4 h-4 text-ai-blue" />
-                   <p className="text-[9px] md:text-[11px] font-black uppercase text-white tracking-[0.1em]">{currentPhase}</p>
-                </div>
-                <div className="flex gap-2">
-                  {logs.map((log, i) => (
-                    <span key={i} className={`text-[7px] md:text-[8px] font-black uppercase opacity-${30 - i * 10} transition-opacity text-zinc-500`}>&gt; {log}</span>
-                  ))}
-                </div>
-              </div>
-              <div className="text-right ml-4">
-                <span className="text-lg md:text-2xl font-black text-ai-blue tracking-tighter">{Math.floor(progress)}%</span>
-              </div>
-            </div>
             
-            <div className="relative h-1.5 md:h-2 bg-white/5 rounded-full overflow-hidden p-0.5">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${progress}%` }}
-                className="h-full bg-ai-gradient rounded-full shadow-[0_0_20px_rgba(79,124,255,0.4)]"
-              />
+            <div className="space-y-4">
+              <div className="flex justify-between items-end px-1">
+                <div className="space-y-1 flex-1">
+                  <div className="flex items-center gap-1.5 md:gap-2">
+                     <Cpu className={`w-3.5 h-3.5 md:w-4 h-4 text-ai-blue ${progress < 100 ? 'animate-pulse' : ''}`} />
+                     <p className="text-[9px] md:text-[11px] font-black uppercase text-white tracking-[0.1em]">{currentPhase}</p>
+                  </div>
+                  {/* Active Simulated Logs */}
+                  <div className="bg-black/30 rounded-xl p-3 border border-white/5 font-mono text-[7px] md:text-[8px] space-y-1 max-h-20 overflow-y-auto no-scrollbar">
+                    {logs.map((log, i) => (
+                      <motion.div 
+                        key={`${i}-${log}`} 
+                        initial={{ opacity: 0, x: -5 }} 
+                        animate={{ opacity: 1 - i * 0.2, x: 0 }}
+                        className="flex gap-2"
+                      >
+                        <span className="text-zinc-600">[{new Date().toLocaleTimeString('fr-FR', { hour12: false })}]</span>
+                        <span className={log.includes('ERROR') ? 'text-red-400' : log.includes('REAL_AI') ? 'text-ai-blue' : 'text-emerald-500/60'}>
+                          &gt; {log}
+                        </span>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+                <div className="text-right ml-4">
+                  <span className="text-lg md:text-2xl font-black text-ai-blue tracking-tighter">{Math.floor(progress)}%</span>
+                </div>
+              </div>
+              
+              <div className="relative h-1.5 md:h-2 bg-white/5 rounded-full overflow-hidden p-0.5">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress}%` }}
+                  className="h-full bg-ai-gradient rounded-full shadow-[0_0_20px_rgba(79,124,255,0.4)]"
+                />
+              </div>
             </div>
           </>
         )}

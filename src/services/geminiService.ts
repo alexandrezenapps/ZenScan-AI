@@ -1,52 +1,76 @@
-import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-
-export async function chatWithAI(message: string, history: { role: 'user' | 'assistant', content: string }[] = []) {
+export async function chatWithAI(message: string, history: { role: 'user' | 'assistant', content: string }[] = [], contextDocs: any[] = []) {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: [
-        ...(history || []).map(m => ({ 
-          role: m.role === 'assistant' ? 'model' : 'user', 
-          parts: [{ text: m.content }] 
-        })),
-        { role: 'user', parts: [{ text: message }] }
-      ],
-      config: {
-        systemInstruction: "Tu es Zen AI, un assistant de gestion documentaire intelligent. Tu aides les utilisateurs à analyser, résumer et organiser leurs documents. Sois professionnel et expert.",
-      }
+    const response = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history, contextDocs })
     });
-
-    return response.text;
+    
+    if (!response.ok) throw new Error('AI request failed');
+    const data = await response.json();
+    return data.response;
   } catch (error) {
-    console.error("Gemini AI Service Error:", error);
+    console.error("Gemini AI Client Error:", error);
     throw error;
   }
 }
 
-export async function analyzeDocument(content: string) {
+export async function analyzeDocument(image: string, context?: string) {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: `Analyse ce texte extrait d'un document et extrais les informations clés (type, montant, date, entités) au format JSON simplifié. Ne renvoie QUE le JSON sans markdown. : \n\n${content}`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            type: { type: Type.STRING },
-            amount: { type: Type.STRING },
-            date: { type: Type.STRING },
-            entities: { type: Type.ARRAY, items: { type: Type.STRING } }
-          }
-        }
-      }
+    const response = await fetch('/api/ai/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image, context })
     });
     
-    return JSON.parse(response.text || "{}");
+    if (!response.ok) throw new Error('Analysis request failed');
+    return await response.json();
   } catch (error) {
-    console.error("Gemini Analysis Service Error:", error);
+    console.error("Gemini Analysis Client Error:", error);
     return null;
   }
 }
+
+export async function suggestTagsForDocument(documentName: string, contentSnippet?: string, category?: string, currentTags: string[] = []) {
+  try {
+    const response = await fetch('/api/ai/suggest-tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documentName, contentSnippet, category, currentTags })
+    });
+
+    if (!response.ok) throw new Error('Tag suggestions request failed');
+    const data = await response.json();
+    return data.tags as string[];
+  } catch (error) {
+    console.error("Gemini Tag Suggestions Client Error:", error);
+    return [];
+  }
+}
+
+export interface DetectedObject {
+  name_en: string;
+  name_fr: string;
+  name_zh: string;
+  boundingBox: [number, number, number, number]; // [ymin, xmin, ymax, xmax] as percentages
+}
+
+export async function detectObjectsInImage(image: string): Promise<DetectedObject[]> {
+  try {
+    const response = await fetch('/api/ai/detect-objects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image })
+    });
+
+    if (!response.ok) throw new Error('Object detection request failed');
+    const data = await response.json();
+    return data.objects as DetectedObject[];
+  } catch (error) {
+    console.error("Gemini Object Detection Client Error:", error);
+    return [];
+  }
+}
+
+

@@ -34,19 +34,19 @@ export default function BottomNav({ currentView, onNavigate, onScan }: BottomNav
   };
 
   return (
-    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[95%] max-w-[500px] h-20 md:h-22 bg-primary-800/60 backdrop-blur-3xl rounded-[32px] flex items-center justify-between px-6 md:px-10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-50 border border-white/10">
-      <div className="flex items-center gap-6 md:gap-10">
+    <nav className="fixed bottom-5 left-1/2 -translate-x-1/2 w-[90%] max-w-[420px] h-14 md:h-15 bg-primary-800/80 backdrop-blur-2xl rounded-full flex items-center justify-between px-5 md:px-8 shadow-[0_15px_40px_rgba(0,0,0,0.6)] z-50 border border-white/10">
+      <div className="flex items-center gap-5 md:gap-8">
         {navItemsLeft.map((item) => (
           <button
             key={item.id}
             id={`nav-${item.id.toLowerCase()}`}
             onClick={() => onNavigate(item.id as AppView)}
-            className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 group relative ${
+            className={`flex flex-col items-center gap-0.5 transition-all active:scale-90 group relative ${
               currentView === item.id ? 'text-ai-blue' : 'text-text-main/40 hover:text-text-main/70'
             }`}
           >
-            <item.icon className={`w-5 h-5 md:w-6 md:h-6 transition-transform ${currentView === item.id ? 'scale-110' : 'group-hover:scale-105'}`} />
-            <span className={`text-[8px] md:text-[9px] font-black uppercase tracking-[0.15em] transition-opacity ${currentView === item.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+            <item.icon className={`w-4 h-4 md:w-5 h-5 transition-transform ${currentView === item.id ? 'scale-110' : 'group-hover:scale-105'}`} />
+            <span className={`text-[7px] md:text-[8px] font-black uppercase tracking-[0.12em] transition-opacity leading-none ${currentView === item.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
               {item.label}
             </span>
             {currentView === item.id && (
@@ -59,26 +59,26 @@ export default function BottomNav({ currentView, onNavigate, onScan }: BottomNav
         ))}
       </div>
 
-      {/* FAB SCAN */}
-      <div className="relative -top-8 px-2 md:px-4 flex flex-col items-center gap-1.5 group">
+      {/* FAB SCAN Centered Inline */}
+      <div className="flex flex-col items-center justify-center gap-0.5 group shrink-0 relative top-0.5">
         <ScanButtonFloating onClick={handleScanClick} />
-        <span className={`text-[8px] md:text-[9px] font-black uppercase tracking-[0.15em] transition-all ${currentView === AppView.SCANNER ? 'text-ai-blue opacity-100' : 'text-text-main/40 opacity-0 group-hover:opacity-100'}`}>
+        <span className={`text-[7px] md:text-[8px] font-black uppercase tracking-[0.12em] transition-all leading-none ${currentView === AppView.SCANNER ? 'text-ai-blue opacity-100' : 'text-text-main/40 opacity-0 group-hover:opacity-100'}`}>
           Scanner
         </span>
       </div>
 
-      <div className="flex items-center gap-6 md:gap-10">
+      <div className="flex items-center gap-5 md:gap-8">
         {navItemsRight.map((item) => (
           <button
             key={item.id}
             id={`nav-${item.id.toLowerCase()}`}
             onClick={() => onNavigate(item.id as AppView)}
-            className={`flex flex-col items-center gap-1.5 transition-all active:scale-90 group relative ${
+            className={`flex flex-col items-center gap-0.5 transition-all active:scale-90 group relative ${
               currentView === item.id ? 'text-ai-blue' : 'text-text-main/40 hover:text-text-main/70'
             }`}
           >
-            <item.icon className={`w-5 h-5 md:w-6 md:h-6 transition-transform ${currentView === item.id ? 'scale-110' : 'group-hover:scale-105'}`} />
-            <span className={`text-[8px] md:text-[9px] font-black uppercase tracking-[0.15em] transition-opacity ${currentView === item.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+            <item.icon className={`w-4 h-4 md:w-5 h-5 transition-transform ${currentView === item.id ? 'scale-110' : 'group-hover:scale-105'}`} />
+            <span className={`text-[7px] md:text-[8px] font-black uppercase tracking-[0.12em] transition-opacity leading-none ${currentView === item.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
               {item.label}
             </span>
             {currentView === item.id && (

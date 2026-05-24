@@ -15,6 +15,7 @@ export const RECENT_SCANS: DocumentMetadata[] = [
     tags: ['✨ AI Tagged', 'Finance'],
     isAiEnhanced: true,
     contentSnippet: "Facture d'achat pour un lot de matériel informatique. Total TTC: 450.00 EUR.",
+    url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
     extractedData: {
       'Vendor': 'Amazon Europe Core S.a.r.l.',
       'Date': '15 Avril 2026',
@@ -32,6 +33,7 @@ export const RECENT_SCANS: DocumentMetadata[] = [
     tags: ['✨ AI Tagged', 'Legal'],
     isAiEnhanced: true,
     contentSnippet: "Contrat de location pour appartement T3. Durée 12 mois renouvelables.",
+    url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
     extractedData: {
       'Loyer': '1 200 € HC',
       'Adresse': '42 Rue de la Paix',
@@ -49,6 +51,8 @@ export const RECENT_SCANS: DocumentMetadata[] = [
     tags: ['Identity'],
     isAiEnhanced: true,
     contentSnippet: "Document d'identité nationale. Valide jusqu'en 2032.",
+    url: '/src/assets/images/mock_passport_1779460366413.png',
+    thumbnailUrl: '/src/assets/images/mock_passport_1779460366413.png',
     extractedData: {
       'Document Type': 'Passeport',
       'Nationality': 'Française',

@@ -5,7 +5,7 @@
 
 import React, { ReactNode, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { ChevronRight, Cloud, Lock, Cpu, Moon, Sun, AppWindow, LogOut, Crown, Zap, Sparkles, Loader2, Palette } from 'lucide-react';
+import { ChevronRight, Cloud, Lock, Cpu, Moon, Sun, AppWindow, LogOut, Crown, Zap, Sparkles, Loader2, Palette, LayoutGrid, List } from 'lucide-react';
 import { AppView } from '../types';
 import { ICON_COLORS, updateAppMeta, SHAPES_LIST } from '../lib/icons';
 import { useAuth } from '../context/AuthContext';
@@ -22,6 +22,7 @@ export default function Settings({ onNavigate }: SettingsProps) {
   const [faceId, setFaceId] = useState(localStorage.getItem('zenScanFaceId') === 'true');
   const [realtimePred, setRealtimePred] = useState(localStorage.getItem('zenScanRealtimePred') !== 'false');
   const [ocrOptim, setOcrOptim] = useState(localStorage.getItem('zenScanOcrOptim') !== 'false');
+  const [displayMode, setDisplayMode] = useState(localStorage.getItem('zenScanLibraryDisplay') || 'grid');
   const { mode, accentColor, toggleMode, setAccentColor } = useTheme();
   const { logout, user } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -54,6 +55,12 @@ export default function Settings({ onNavigate }: SettingsProps) {
     const newState = !ocrOptim;
     setOcrOptim(newState);
     localStorage.setItem('zenScanOcrOptim', String(newState));
+  };
+
+  const toggleDisplayMode = () => {
+    const newMode = displayMode === 'grid' ? 'list' : 'grid';
+    setDisplayMode(newMode);
+    localStorage.setItem('zenScanLibraryDisplay', newMode);
   };
 
   const handleLogout = async () => {
@@ -237,6 +244,12 @@ export default function Settings({ onNavigate }: SettingsProps) {
           </SettingsGroup>
 
           <SettingsGroup title="Apparence & Personnalisation">
+            <SettingsItem 
+              icon={displayMode === 'grid' ? LayoutGrid : List} 
+              label="Affichage par défaut" 
+              detail={displayMode === 'grid' ? "Mode Grille" : "Mode Liste"} 
+              onClick={toggleDisplayMode}
+            />
             <SettingsItem 
               icon={mode === 'dark' ? Moon : Sun} 
               label="Mode d'Apparence" 

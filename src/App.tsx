@@ -16,7 +16,7 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { AppView, DocumentMetadata } from './types';
+import { AppView, DocumentMetadata, DetectedObject } from './types';
 import { updateAppMeta } from './lib/icons';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
@@ -48,6 +48,7 @@ export default function App() {
   const [selectedDocument, setSelectedDocument] = useState<DocumentMetadata | null>(null);
   const [scannedImage, setScannedImage] = useState<string | null>(null);
   const [scannedLocation, setScannedLocation] = useState<{ latitude: number, longitude: number } | null>(null);
+  const [scannedObjects, setScannedObjects] = useState<DetectedObject[] | undefined>(undefined);
   const [ocrLanguage, setOcrLanguage] = useState<string>('Français');
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const { user, loading } = useAuth();
@@ -127,10 +128,14 @@ export default function App() {
         <AnimatePresence mode="wait">
           <motion.div 
             key={location.pathname}
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
+            initial={{ opacity: 0, scale: 0.98, filter: 'blur(10px)' }}
+            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, scale: 1.02, filter: 'blur(10px)' }}
+            transition={{ 
+              duration: 0.4, 
+              ease: [0.22, 1, 0.36, 1]
+            }}
+            className="w-full h-full"
           >
             <Suspense fallback={<LoadingFallback />}>
               <Routes location={location}>
@@ -141,10 +146,11 @@ export default function App() {
             <Route path="/scanner" element={
               <Scanner 
                 onNavigate={handleNavigate} 
-                onScanComplete={(img, lang, loc) => {
+                onScanComplete={(img, lang, loc, objects) => {
                   setScannedImage(img || null);
                   if (lang) setOcrLanguage(lang);
                   if (loc) setScannedLocation(loc);
+                  setScannedObjects(objects);
                   navigate('/ocr');
                 }} 
               />
@@ -155,12 +161,14 @@ export default function App() {
                 onComplete={() => {
                   setScannedImage(null);
                   setScannedLocation(null);
+                  setScannedObjects(undefined);
                   navigate('/editor');
                 }} 
                 onSelectDocument={setSelectedDocument}
                 scannedImage={scannedImage}
                 scannedLocation={scannedLocation}
                 initialLanguage={ocrLanguage}
+                scannedObjects={scannedObjects}
               />
             } />
             <Route path="/editor" element={<Editor onNavigate={handleNavigate} document={selectedDocument} />} />

@@ -57,24 +57,24 @@ export const ScanButtonFloating: React.FC<{ onClick: () => void }> = ({ onClick 
     <div className="relative">
       <motion.div
         animate={{
-          scale: [1, 1.05, 1],
-          opacity: [0.4, 0.6, 0.4],
+          scale: [1, 1.08, 1],
+          opacity: [0.3, 0.5, 0.3],
         }}
         transition={{
-          duration: 1.5,
+          duration: 1.8,
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="absolute -inset-4 bg-ai-blue/30 rounded-full blur-2xl"
+        className="absolute -inset-2 bg-ai-blue/30 rounded-full blur-xl"
       />
       <motion.button
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.92 }}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
         onClick={onClick}
-        className="relative w-18 h-18 rounded-full bg-ai-gradient shadow-[0_15px_30px_rgba(79,124,255,0.5)] flex items-center justify-center text-accent-text"
+        className="relative w-11 h-11 rounded-full bg-ai-gradient shadow-[0_8px_16px_rgba(79,124,255,0.3)] flex items-center justify-center text-accent-text"
       >
-        <Scan className="w-8 h-8" />
-        <div className="absolute inset-0 rounded-full border-2 border-white/20" />
+        <Scan className="w-5 h-5" />
+        <div className="absolute inset-0 rounded-full border border-white/20" />
       </motion.button>
     </div>
   );

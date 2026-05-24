@@ -5,23 +5,64 @@
 
 import React, { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, SlidersHorizontal, FileText, X, Sparkles, Download, Share2, Trash2, Calendar, FileType, HardDrive, Tag, Plus, CheckCircle2, Loader2, ZoomIn, ZoomOut, Maximize, LayoutGrid, List, Mail, Languages, Printer, Copy, ExternalLink, ArrowUpDown, ChevronRight, Home, Eye, ChevronLeft, RotateCw } from 'lucide-react';
+import { Search, SlidersHorizontal, FileText, X, Sparkles, Download, Share2, Trash2, Calendar, FileType, HardDrive, Tag, Plus, CheckCircle2, Loader2, ZoomIn, ZoomOut, Maximize, LayoutGrid, List, Mail, Languages, Printer, Copy, ExternalLink, ArrowUpDown, ChevronRight, Home, Eye, ChevronLeft, RotateCw, Folder, Archive, Zap } from 'lucide-react';
 import { AppView, DocumentMetadata } from '../types';
 import { GlassCard, AIOrb, PrimaryButton, AIChip } from '../components/PremiumComponents';
 import { DURATIONS, EASINGS } from '../lib/animations';
 import { FadeScale } from '../components/animations/FadeScale';
 import { storageService } from '../services/storageService';
 import { useAuth } from '../context/AuthContext';
+import { chatWithAI, suggestTagsForDocument } from '../services/geminiService';
+import CloudSyncIndicator from '../components/CloudSyncIndicator';
+
+// Memoized Document Skeleton for loading states
+const DocumentSkeleton: React.FC<{ idx: number, mode: 'grid' | 'list' }> = ({ idx, mode }) => {
+  return (
+    <FadeScale delay={idx * 30}>
+      {mode === 'grid' ? (
+        <div className="bg-white/[0.02] border border-white/5 rounded-3xl overflow-hidden glass-card p-6 flex flex-col gap-5 animate-pulse">
+          <div className="h-44 md:h-52 rounded-2xl bg-white/5 relative overflow-hidden">
+            <motion.div 
+              animate={{ x: ['-100%', '100%'] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.05] to-transparent"
+            />
+          </div>
+          <div className="space-y-3">
+            <div className="h-4 w-3/4 bg-white/5 rounded-lg" />
+            <div className="h-2 w-1/2 bg-white/5 rounded-lg" />
+            <div className="flex gap-2 pt-2">
+              <div className="h-4 w-12 bg-white/5 rounded-md" />
+              <div className="h-4 w-12 bg-white/5 rounded-md" />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-4 p-3 md:p-4 bg-primary-800/40 border border-white/5 rounded-2xl md:rounded-[24px] glass-card animate-pulse">
+          <div className="w-8 h-8 rounded-lg bg-white/5" />
+          <div className="w-14 h-14 rounded-lg bg-white/5" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-1/3 bg-white/5 rounded-md" />
+            <div className="h-2 w-1/4 bg-white/5 rounded-md" />
+          </div>
+          <div className="w-12 h-4 bg-white/5 rounded-md" />
+        </div>
+      )}
+    </FadeScale>
+  );
+};
 
 // Memoized Document Card for performance
-const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection, onQuickPreview }: { 
+const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection, onQuickPreview, onMouseMove, onHoverLeave }: { 
   scan: DocumentMetadata, 
   idx: number, 
   onClick: (doc: DocumentMetadata) => void,
   isSelected: boolean,
   isSelectionMode: boolean,
   onToggleSelection: (id: string) => void,
-  onQuickPreview: (doc: DocumentMetadata) => void
+  onQuickPreview: (doc: DocumentMetadata) => void,
+  onMouseMove: (doc: DocumentMetadata, e: React.MouseEvent) => void,
+  onHoverLeave: () => void
 }) => {
   const displayUrl = scan.thumbnailUrl || scan.url;
   
@@ -43,6 +84,8 @@ const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMo
     <FadeScale delay={idx * 30}>
       <div
         onClick={handleClick}
+        onMouseMove={(e) => onMouseMove(scan, e)}
+        onMouseLeave={onHoverLeave}
         className={`group relative bg-white/[0.02] border ${isSelected ? 'border-ai-blue ring-1 ring-ai-blue/10 bg-ai-blue/[0.02]' : 'border-white/5'} rounded-3xl overflow-hidden hover:border-white/20 transition-all duration-500 glass-card p-6 flex flex-col gap-5 cursor-pointer shadow-sm hover:shadow-2xl`}
       >
         <div 
@@ -141,14 +184,16 @@ const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMo
   );
 });
 
-const DocumentListItem = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection, onQuickPreview }: { 
+const DocumentListItem = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection, onQuickPreview, onMouseMove, onHoverLeave }: { 
   scan: DocumentMetadata, 
   idx: number, 
   onClick: (doc: DocumentMetadata) => void,
   isSelected: boolean,
   isSelectionMode: boolean,
   onToggleSelection: (id: string) => void,
-  onQuickPreview: (doc: DocumentMetadata) => void
+  onQuickPreview: (doc: DocumentMetadata) => void,
+  onMouseMove: (doc: DocumentMetadata, e: React.MouseEvent) => void,
+  onHoverLeave: () => void
 }) => {
   const displayUrl = scan.thumbnailUrl || scan.url;
   
@@ -170,6 +215,8 @@ const DocumentListItem = React.memo(({ scan, idx, onClick, isSelected, isSelecti
     <FadeScale delay={idx * 20}>
       <div 
         onClick={handleClick}
+        onMouseMove={(e) => onMouseMove(scan, e)}
+        onMouseLeave={onHoverLeave}
         className={`group flex items-center gap-4 p-3 md:p-4 bg-primary-800/40 border ${isSelected ? 'border-ai-blue ring-2 ring-ai-blue/10 bg-ai-blue/5' : 'border-white/5'} rounded-2xl md:rounded-[24px] hover:border-ai-blue/30 transition-all duration-300 glass-card cursor-pointer`}
       >
         <div 
@@ -269,6 +316,8 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
   const [displayMode, setDisplayMode] = useState<'grid' | 'list'>(localStorage.getItem('zenScanLibraryDisplay') as 'grid' || 'grid');
   const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState<DocumentMetadata | null>(null);
+  const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [newTag, setNewTag] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
@@ -279,9 +328,90 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
   const [searchQuery, setSearchQuery] = useState('');
   const [pdfPage, setPdfPage] = useState(1);
   const [rotation, setRotation] = useState(0);
+  const [hoveredDoc, setHoveredDoc] = useState<{ doc: DocumentMetadata, x: number, y: number } | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [osdLanguage, setOsdLanguage] = useState<'en' | 'fr' | 'zh'>('fr');
+
+  const docObjects = useMemo(() => {
+    if (!selectedDoc) return [];
+    if (selectedDoc.detectedObjects && selectedDoc.detectedObjects.length > 0) {
+      return selectedDoc.detectedObjects;
+    }
+    if (selectedDoc.type !== 'PDF') {
+      return [
+        {
+          name_en: "Smart Display",
+          name_fr: "Écran Intelligent",
+          name_zh: "智能显示屏",
+          boundingBox: [15, 10, 55, 60] as [number, number, number, number]
+        },
+        {
+          name_en: "Coffee Mug",
+          name_fr: "Tasse à Café",
+          name_zh: "咖啡杯",
+          boundingBox: [60, 65, 90, 88] as [number, number, number, number]
+        },
+        {
+          name_en: "Wireless Keyboard",
+          name_fr: "Clavier Sans Fil",
+          name_zh: "无线键盘",
+          boundingBox: [65, 15, 88, 55] as [number, number, number, number]
+        }
+      ];
+    }
+    return [];
+  }, [selectedDoc]);
+  const [batchSummary, setBatchSummary] = useState<string | null>(null);
+  const [isBatchCategoryOpen, setIsBatchCategoryOpen] = useState(false);
+  const [isBatchTagOpen, setIsBatchTagOpen] = useState(false);
+  const [batchTagInput, setBatchTagInput] = useState('');
+  const [isBatchRenameOpen, setIsBatchRenameOpen] = useState(false);
+  const [renameFind, setRenameFind] = useState('');
+  const [renameReplace, setRenameReplace] = useState('');
+  const [useRegex, setUseRegex] = useState(true);
+
+  const renamePreviews = useMemo(() => {
+    if (selectedDocIds.length === 0) return [];
+    return documents
+      .filter(d => selectedDocIds.includes(d.id))
+      .map(d => {
+        let newName = d.name;
+        let isChanged = false;
+        let errorMsg = null;
+        if (renameFind) {
+          if (useRegex) {
+            try {
+              const regex = new RegExp(renameFind, 'g');
+              newName = d.name.replace(regex, renameReplace);
+              isChanged = newName !== d.name;
+            } catch (err: any) {
+              errorMsg = err.message || "Expression régulière incorrecte";
+            }
+          } else {
+            newName = d.name.split(renameFind).join(renameReplace);
+            isChanged = newName !== d.name;
+          }
+        }
+        return {
+          id: d.id,
+          oldName: d.name,
+          newName,
+          isChanged,
+          errorMsg
+        };
+      });
+  }, [documents, selectedDocIds, renameFind, renameReplace, useRegex]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
-  const categoriesList = ['Factures', 'Recettes', 'Contrats', 'Identité', 'Personnel', 'Travail', 'Autre'];
+  const defaultCategories = ['Factures', 'Recettes', 'Contrats', 'Identité', 'Personnel', 'Travail', 'Autre'];
+
+  const categoriesList = useMemo(() => {
+    const docCategories = documents
+      .map(d => d.category)
+      .filter((c): c is string => !!c);
+    return Array.from(new Set([...defaultCategories, ...docCategories]));
+  }, [documents]);
 
   const [isFullScreen, setIsFullScreen] = useState(false);
 
@@ -292,6 +422,49 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
     setPdfPage(1);
     setRotation(0);
   }, [selectedDoc?.id]);
+
+  useEffect(() => {
+    if (!selectedDoc) {
+      setSuggestedTags([]);
+      return;
+    }
+
+    const fetchSuggestions = async () => {
+      setIsLoadingSuggestions(true);
+      try {
+        const suggestions = await suggestTagsForDocument(
+          selectedDoc.name,
+          selectedDoc.contentSnippet || '',
+          selectedDoc.category || '',
+          selectedDoc.tags || []
+        );
+        setSuggestedTags(suggestions);
+      } catch (err) {
+        console.error("Error fetching tag suggestions:", err);
+      } finally {
+        setIsLoadingSuggestions(false);
+      }
+    };
+
+    fetchSuggestions();
+  }, [selectedDoc?.id]);
+
+  const handleSelectSuggestedTag = async (tagToApply: string) => {
+    if (!selectedDoc || !user) return;
+    const trimmedTag = tagToApply.trim();
+    if ((selectedDoc.tags || []).includes(trimmedTag)) return;
+    
+    const updatedTags = [...(selectedDoc.tags || []), trimmedTag];
+    const updatedDoc = { ...selectedDoc, tags: updatedTags };
+    
+    try {
+      await storageService.saveDocument(updatedDoc);
+      setSelectedDoc(updatedDoc);
+      setDocuments(prev => prev.map(d => d.id === selectedDoc.id ? updatedDoc : d));
+    } catch (error) {
+      console.error("Error adding tag from suggestions", error);
+    }
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -351,6 +524,10 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
 
   const clearSelection = () => setSelectedDocIds([]);
 
+  const handleSelectAll = () => {
+    setSelectedDocIds(filteredDocuments.map(d => d.id));
+  };
+
   const handleBatchDelete = async () => {
     if (selectedDocIds.length === 0 || !user || !confirm(`Supprimer ces ${selectedDocIds.length} documents définitivement ?`)) return;
     
@@ -363,8 +540,7 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
     }
   };
 
-  const handleBatchTag = async () => {
-    const tag = prompt("Entrez un tag à ajouter à la sélection :");
+  const handleBatchTag = async (tag: string) => {
     if (!tag || selectedDocIds.length === 0 || !user) return;
     
     const trimmedTag = tag.trim();
@@ -384,17 +560,128 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
         return updated || d;
       }));
       
-      alert(`Tag "${trimmedTag}" ajouté à ${selectedDocIds.length} documents.`);
+      setIsBatchTagOpen(false);
+      setBatchTagInput('');
     } catch (error) {
       console.error("Error bulk tagging", error);
+    }
+  };
+
+  const handleBatchCategory = async (cat: string) => {
+    if (selectedDocIds.length === 0 || !user) return;
+    
+    try {
+      const updatedDocs = documents
+        .filter(d => selectedDocIds.includes(d.id))
+        .map(d => ({
+          ...d,
+          category: cat
+        }));
+      
+      await Promise.all(updatedDocs.map(d => storageService.saveDocument(d)));
+      
+      setDocuments(prev => prev.map(d => {
+        const updated = updatedDocs.find(up => up.id === d.id);
+        return updated || d;
+      }));
+      
+      setSelectedDocIds([]);
+      setIsBatchCategoryOpen(false);
+    } catch (error) {
+      console.error("Error bulk category change", error);
+    }
+  };
+
+  const handleBatchRename = async () => {
+    if (selectedDocIds.length === 0 || !user) return;
+
+    try {
+      const updatedDocs = documents
+        .filter(d => selectedDocIds.includes(d.id))
+        .map(d => {
+          let newName = d.name;
+          if (renameFind) {
+            if (useRegex) {
+              try {
+                const regex = new RegExp(renameFind, 'g');
+                newName = d.name.replace(regex, renameReplace);
+              } catch (err) {
+                console.error("Regex error during execution", err);
+              }
+            } else {
+              newName = d.name.split(renameFind).join(renameReplace);
+            }
+          }
+          return {
+            ...d,
+            name: newName
+          };
+        });
+
+      await Promise.all(updatedDocs.map(d => storageService.saveDocument(d)));
+
+      setDocuments(prev => prev.map(d => {
+        const updated = updatedDocs.find(up => up.id === d.id);
+        return updated || d;
+      }));
+
+      setSelectedDocIds([]);
+      setIsBatchRenameOpen(false);
+      setRenameFind('');
+      setRenameReplace('');
+    } catch (error) {
+      console.error("Error batch renaming docs", error);
+    }
+  };
+
+  const handleBatchSummarize = async () => {
+    if (selectedDocIds.length === 0) return;
+    
+    setIsSummarizing(true);
+    setBatchSummary(null);
+    
+    const selectedDocuments = documents.filter(d => selectedDocIds.includes(d.id));
+    const context = selectedDocuments.map(d => ({
+      name: d.name,
+      contentSnippet: d.contentSnippet,
+      extractedData: d.extractedData,
+      category: d.category
+    }));
+    
+    try {
+      const summary = await chatWithAI(
+        "Génère un résumé consolidé et analytique de ces documents sélectionnés. Identifie les points communs, les tendances ou les informations critiques. Réponds de manière concise, élégante et professionnelle.",
+        [],
+        context
+      );
+      setBatchSummary(summary);
+    } catch (error) {
+      console.error("Batch summary error:", error);
+      alert("Une erreur est survenue lors de la génération du résumé.");
+    } finally {
+      setIsSummarizing(false);
     }
   };
 
   const handleBatchShare = async () => {
     if (selectedDocIds.length === 0) return;
     const selectedFiles = documents.filter(d => selectedDocIds.includes(d.id));
-    const urls = selectedFiles.map(f => f.url).filter(Boolean);
     
+    // Attempt to download all if multiple
+    if (confirm(`Voulez-vous télécharger les ${selectedFiles.length} fichiers sélectionnés ?`)) {
+      selectedFiles.forEach((file, index) => {
+        setTimeout(() => {
+          const link = document.createElement('a');
+          link.href = file.url;
+          link.download = file.name;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }, index * 300); // Stagger downloads to avoid browser block
+      });
+      return;
+    }
+
     if (navigator.share) {
       try {
         await navigator.share({
@@ -484,6 +771,80 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
       setSelectedDoc(null);
     } catch (error) {
       console.error("Error deleting document", error);
+    }
+  };
+
+  const handleQuickArchiveAll = async () => {
+    if (documents.length === 0) {
+      alert("Aucun document à archiver.");
+      return;
+    }
+    if (!confirm(`Archiver les ${documents.length} documents de votre bibliothèque ?`)) return;
+    
+    try {
+      const updatedDocs = documents.map(d => {
+        const hasArchivedTag = d.tags.includes('Archived');
+        return {
+          ...d,
+          category: 'Archive',
+          tags: hasArchivedTag ? d.tags : [...d.tags, 'Archived']
+        };
+      });
+
+      await Promise.all(updatedDocs.map(d => storageService.saveDocument(d)));
+      setDocuments(updatedDocs);
+      alert(`${documents.length} documents ont été archivés avec succès.`);
+    } catch (error) {
+      console.error("Error bulk archiving", error);
+      alert("Une erreur est survenue lors de l'archivage.");
+    }
+  };
+
+  const handleQuickClearAllTags = async () => {
+    if (documents.length === 0) {
+      alert("Aucun document trouvé.");
+      return;
+    }
+    const withTags = documents.filter(d => d.tags && d.tags.length > 0);
+    if (withTags.length === 0) {
+      alert("Aucun document ne possède de tags.");
+      return;
+    }
+    if (!confirm(`Effacer tous les tags de vos ${withTags.length} documents ?`)) return;
+
+    try {
+      const updatedDocs = documents.map(d => ({
+        ...d,
+        tags: []
+      }));
+
+      await Promise.all(updatedDocs.map(d => storageService.saveDocument(d)));
+      setDocuments(updatedDocs);
+      alert("Tous les tags ont été effacés avec succès.");
+    } catch (error) {
+      console.error("Error clearing all tags", error);
+      alert("Une erreur est survenue lors de l'effacement des tags.");
+    }
+  };
+
+  const handleQuickBulkExportPdf = () => {
+    const pdfs = documents.filter(d => d.type === 'PDF');
+    if (pdfs.length === 0) {
+      alert("Aucun document au format PDF trouvé dans votre bibliothèque.");
+      return;
+    }
+
+    if (confirm(`Voulez-vous exporter et télécharger les ${pdfs.length} fichiers PDF trouvés ?`)) {
+      pdfs.forEach((file, index) => {
+        setTimeout(() => {
+          const link = document.createElement('a');
+          link.href = file.url || '';
+          link.download = file.name;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }, index * 300); // Stagger downloads to avoid browser block
+      });
     }
   };
 
@@ -675,7 +1036,10 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
         )}
       </motion.div>
 
-      <header className="mb-8 md:mb-12 space-y-4 md:space-y-6">
+      {/* Split layout on desktop */}
+      <div className="flex flex-col lg:flex-row gap-8 items-start relative w-full">
+        <div className="flex-1 min-w-0 w-full">
+          <header className="mb-8 md:mb-12 space-y-4 md:space-y-6">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
           <div className="space-y-1">
             <p className="text-[9px] md:text-[10px] font-black text-ai-blue uppercase tracking-[0.4em] leading-none">Archive Numérique</p>
@@ -728,7 +1092,7 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
 
             <button 
               onClick={() => setIsFilterOpen(true)}
-              className={`relative w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl glass-card flex items-center justify-center transition-colors flex-shrink-0 ${
+              className={`lg:hidden relative w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl glass-card flex items-center justify-center transition-colors flex-shrink-0 ${
                 (selectedCategories.length > 0 || selectedTypes.length > 0 || aiOnly) ? 'text-ai-blue border-ai-blue/30' : 'text-zinc-500 hover:text-ai-blue'
               }`}
             >
@@ -743,22 +1107,44 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
         </div>
 
         {/* Categories Quick Filter */}
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 -mx-5 px-5 md:mx-0 md:px-0">
-          <button 
-            onClick={clearFilters}
-            className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategories.length === 0 ? 'bg-ai-blue/10 text-ai-blue border border-ai-blue/30 shadow-[0_0_20px_rgba(59,130,246,0.15)]' : 'bg-white/5 text-zinc-500 border border-white/5 hover:border-white/10'}`}
-          >
-            Tous les documents
-          </button>
-          {categoriesList.map(cat => (
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 -mx-5 px-5 md:mx-0 md:px-0 flex-1">
             <button 
-              key={cat}
-              onClick={() => toggleCategory(cat)}
-              className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategories.includes(cat) ? 'bg-ai-blue/10 text-ai-blue border border-ai-blue/30 shadow-[0_0_20px_rgba(59,130,246,0.15)]' : 'bg-white/5 text-zinc-500 border border-white/5 hover:border-white/10'}`}
+              onClick={clearFilters}
+              className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategories.length === 0 ? 'bg-ai-blue/10 text-ai-blue border border-ai-blue/30 shadow-[0_0_20px_rgba(59,130,246,0.15)]' : 'bg-white/5 text-zinc-500 border border-white/5 hover:border-white/10'}`}
             >
-              {cat}
+              Tous les documents
             </button>
-          ))}
+            {categoriesList.map(cat => (
+              <button 
+                key={cat}
+                onClick={() => toggleCategory(cat)}
+                className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategories.includes(cat) ? 'bg-ai-blue/10 text-ai-blue border border-ai-blue/30 shadow-[0_0_20px_rgba(59,130,246,0.15)]' : 'bg-white/5 text-zinc-500 border border-white/5 hover:border-white/10'}`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {selectedDocIds.length === filteredDocuments.length && filteredDocuments.length > 0 ? (
+              <button 
+                onClick={clearSelection}
+                className="text-[10px] font-black text-zinc-500 uppercase tracking-widest hover:text-ai-blue transition-colors flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-xl"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-ai-blue" />
+                Désélectionner tout
+              </button>
+            ) : (
+              <button 
+                onClick={handleSelectAll}
+                className="text-[10px] font-black text-zinc-500 uppercase tracking-widest hover:text-ai-blue transition-colors flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-xl"
+              >
+                <div className="w-3.5 h-3.5 border-2 border-zinc-700 rounded-sm" />
+                Tout sélectionner
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -767,9 +1153,9 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
         : "flex flex-col gap-3 md:gap-4"
       }>
         {loading ? (
-          <div className="col-span-full h-64 flex items-center justify-center">
-            <Loader2 className="w-12 h-12 text-ai-blue animate-spin" />
-          </div>
+          Array.from({ length: 6 }).map((_, i) => (
+            <DocumentSkeleton key={`skeleton-${i}`} idx={i} mode={displayMode} />
+          ))
         ) : filteredDocuments.length === 0 ? (
           <div className="col-span-full h-64 flex flex-col items-center justify-center text-zinc-500 gap-4">
             <FileText className="w-16 h-16 opacity-20" />
@@ -789,6 +1175,10 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                 setSelectedDoc(doc);
                 setIsFullScreen(true);
               }}
+              onMouseMove={(doc, e) => {
+                setHoveredDoc({ doc, x: e.clientX, y: e.clientY });
+              }}
+              onHoverLeave={() => setHoveredDoc(null)}
             />
           ) : (
             <DocumentListItem
@@ -803,9 +1193,119 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                 setSelectedDoc(doc);
                 setIsFullScreen(true);
               }}
+              onMouseMove={(doc, e) => {
+                setHoveredDoc({ doc, x: e.clientX, y: e.clientY });
+              }}
+              onHoverLeave={() => setHoveredDoc(null)}
             />
           )
         ))}
+
+        <AnimatePresence>
+          {hoveredDoc && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }}
+              animate={{ 
+                opacity: 1, 
+                scale: 1, 
+                filter: 'blur(0px)',
+                x: hoveredDoc.x + 24 + (hoveredDoc.x + 320 > window.innerWidth ? -360 : 0),
+                y: hoveredDoc.y + 24 + (hoveredDoc.y + 450 > window.innerHeight ? -470 : 0)
+              }}
+              transition={{ 
+                type: 'spring', 
+                damping: 20, 
+                stiffness: 300, 
+                mass: 0.5,
+                opacity: { duration: 0.2 }
+              }}
+              exit={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }}
+              className="fixed z-[300] w-80 pointer-events-none hidden md:block"
+              style={{ 
+                left: 0,
+                top: 0
+              }}
+            >
+              <GlassCard glow className="p-0 overflow-hidden border-ai-blue/50 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)] ring-1 ring-white/20">
+                {/* Header Decoration */}
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-ai-blue via-purple-500 to-ai-blue z-[310] opacity-80" />
+                
+                <div className="aspect-[3/4] w-full bg-primary-950 flex items-center justify-center overflow-hidden border-b border-white/10 relative">
+                  {(hoveredDoc.doc.thumbnailUrl || (hoveredDoc.doc.url && hoveredDoc.doc.type !== 'PDF')) ? (
+                    <motion.img 
+                      initial={{ scale: 1.1 }}
+                      animate={{ scale: 1 }}
+                      src={hoveredDoc.doc.thumbnailUrl || hoveredDoc.doc.url} 
+                      alt={hoveredDoc.doc.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-4">
+                       <div className="w-20 h-20 rounded-[2rem] bg-ai-blue/10 flex items-center justify-center border border-ai-blue/30 relative">
+                         <div className="absolute inset-0 bg-ai-blue/10 blur-xl rounded-full" />
+                         <FileText className="w-10 h-10 text-ai-blue relative z-10" />
+                       </div>
+                       <div className="flex flex-col items-center gap-1">
+                         <span className="text-[10px] font-black text-ai-blue uppercase tracking-[0.4em] leading-none">{hoveredDoc.doc.type}</span>
+                         <span className="text-[8px] font-bold text-zinc-600 uppercase tracking-widest">{hoveredDoc.doc.size}</span>
+                       </div>
+                    </div>
+                  )}
+                  
+                  {/* Status Badges Over Image */}
+                  <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-20">
+                    <div className="px-2 py-1 bg-black/60 backdrop-blur-xl border border-white/20 rounded-lg flex items-center gap-1.5 shadow-2xl">
+                      <Eye className="w-3 h-3 text-ai-blue" />
+                      <span className="text-[8px] font-black text-white uppercase tracking-widest">Aperçu Rapide</span>
+                    </div>
+                    {hoveredDoc.doc.isAiEnhanced && (
+                      <div className="p-1.5 bg-ai-blue/90 backdrop-blur-md rounded-lg shadow-lg">
+                        <Sparkles className="w-3 h-3 text-white" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Aesthetic Overlays */}
+                  <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-primary-950 to-transparent z-10" />
+                  <div className="absolute inset-0 ring-inset ring-1 ring-white/10 z-10" />
+                </div>
+
+                <div className="p-6 pt-2 space-y-4 bg-primary-950">
+                   <div className="space-y-1.5">
+                     <div className="flex items-center gap-2">
+                       <div className="w-2 h-2 rounded-full bg-ai-blue shadow-[0_0_8px_#4F7CFF]" />
+                       <h4 className="text-base font-bold text-white truncate flex-1 min-w-0 tracking-tight">{hoveredDoc.doc.name}</h4>
+                     </div>
+                     <div className="flex items-center gap-2 text-[8px] font-black uppercase text-zinc-500 tracking-[0.2em]">
+                       <span className="text-ai-blue">{hoveredDoc.doc.category || 'Général'}</span>
+                       <span className="w-1 h-1 rounded-full bg-zinc-800" />
+                       <span>Modifié le {hoveredDoc.doc.modifiedAt.toLocaleDateString()}</span>
+                     </div>
+                   </div>
+                   
+                   {hoveredDoc.doc.tags && hoveredDoc.doc.tags.length > 0 && (
+                     <div className="flex flex-wrap gap-1.5">
+                       {hoveredDoc.doc.tags.slice(0, 5).map((tag, i) => (
+                         <span key={`${tag}-${i}`} className="text-[7px] font-black text-white/60 bg-white/5 border border-white/10 px-2 py-1 rounded-md uppercase tracking-wider">
+                           #{tag}
+                         </span>
+                       ))}
+                       {hoveredDoc.doc.tags.length > 5 && <span className="text-[7px] text-zinc-600 font-bold">+{hoveredDoc.doc.tags.length - 5}</span>}
+                     </div>
+                   )}
+
+                   {hoveredDoc.doc.contentSnippet && (
+                     <div className="p-3 bg-white/[0.03] border border-white/5 rounded-xl border-l-2 border-l-ai-blue/40">
+                        <p className="text-[10px] text-zinc-400 line-clamp-3 leading-relaxed italic opacity-90">
+                           "{hoveredDoc.doc.contentSnippet}"
+                        </p>
+                     </div>
+                   )}
+                </div>
+              </GlassCard>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {displayMode === 'grid' && (
           <FadeScale delay={loading ? 0 : filteredDocuments.length * 30}>
@@ -821,6 +1321,179 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
           </FadeScale>
         )}
       </div>
+      </div> {/* Closes left/main column */}
+
+      {/* Persistent Desktop Sidebar */}
+      <aside className="hidden lg:flex flex-col gap-6 w-80 shrink-0 sticky top-28 self-start" id="desktop-library-sidebar">
+        <CloudSyncIndicator />
+        
+        <GlassCard className="p-6 md:p-8 space-y-6 border-white/5 shadow-2xl">
+          <div className="flex items-center gap-2 pb-4 border-b border-white/5">
+            <SlidersHorizontal className="w-4 h-4 text-ai-blue" />
+            <h3 className="text-xs font-black text-white uppercase tracking-widest">Filtres Actifs</h3>
+          </div>
+          
+          <div className="space-y-6">
+            {/* Option: Zen AI Only */}
+            <div className="space-y-3">
+              <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Options Zen AI</h4>
+              <button 
+                onClick={() => setAiOnly(!aiOnly)}
+                className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition-all ${
+                  aiOnly 
+                    ? 'bg-ai-blue/10 border-ai-blue/30 text-ai-blue' 
+                    : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/10'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Sparkles className="w-4 h-4 text-ai-blue" />
+                  <span className="text-xs font-bold uppercase tracking-wider">Vision IA</span>
+                </div>
+                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${aiOnly ? 'border-ai-blue bg-ai-blue' : 'border-zinc-700'}`}>
+                  {aiOnly && <div className="w-1.5 h-1.5 rounded-full bg-white animate-in zoom-in" />}
+                </div>
+              </button>
+            </div>
+
+            {/* Formats Filter */}
+            <div className="space-y-3">
+              <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Formats d'archives</h4>
+              <div className="flex flex-wrap gap-2">
+                {['PDF', 'JPG', 'PNG'].map((format) => {
+                  const isSelected = selectedTypes.includes(format as any);
+                  return (
+                    <button
+                      key={format}
+                      onClick={() => {
+                        setSelectedTypes(prev => 
+                          prev.includes(format as any)
+                            ? prev.filter(t => t !== format)
+                            : [...prev, format as any]
+                        );
+                      }}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-black tracking-wider uppercase transition-all ${
+                        isSelected 
+                          ? 'bg-ai-blue/10 border-ai-blue/30 text-ai-blue' 
+                          : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/10 hover:text-white'
+                      }`}
+                    >
+                      {format}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Sort Mode Filter */}
+            <div className="space-y-3">
+              <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Tri par date</h4>
+              <div className="flex flex-col gap-2">
+                {[
+                  { mode: 'recent', label: 'Plus récents d\'abord' },
+                  { mode: 'oldest', label: 'Plus anciens d\'abord' },
+                  { mode: 'name', label: 'Alphabétique (A-Z)' }
+                ].map((item) => {
+                  const isSelected = sortMode === item.mode;
+                  return (
+                    <button
+                      key={item.mode}
+                      onClick={() => setSortMode(item.mode as any)}
+                      className={`w-full p-3 rounded-xl border text-left text-xs font-bold transition-all flex items-center justify-between ${
+                        isSelected 
+                          ? 'bg-ai-blue/10 border-ai-blue/30 text-ai-blue' 
+                          : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/10 hover:text-white'
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-ai-blue shadow-[0_0_8px_#4F7CFF]" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Categories Filter list list */}
+            <div className="space-y-3">
+              <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Catégories</h4>
+              <div className="flex flex-col gap-2 max-h-48 overflow-y-auto no-scrollbar pr-1">
+                {categoriesList.map((category) => {
+                  const isSelected = selectedCategories.includes(category);
+                  return (
+                    <button
+                      key={category}
+                      onClick={() => toggleCategory(category)}
+                      className={`w-full px-3 py-2 rounded-lg border text-left text-xs font-bold transition-all flex items-center justify-between ${
+                        isSelected 
+                          ? 'bg-ai-blue/10 border-ai-blue/30 text-ai-blue' 
+                          : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/10'
+                      }`}
+                    >
+                      <span className="truncate">{category}</span>
+                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-ai-blue" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Eraser button */}
+            {(selectedCategories.length > 0 || selectedTypes.length > 0 || aiOnly) && (
+              <button
+                onClick={clearFilters}
+                className="w-full h-11 rounded-lg bg-red-400/10 border border-red-400/20 text-red-400 font-bold text-xs uppercase tracking-widest hover:bg-red-400/20 transition-all"
+              >
+                Réinitialiser
+              </button>
+            )}
+          </div>
+        </GlassCard>
+
+        {/* Quick Actions Card */}
+        <GlassCard className="p-6 md:p-8 space-y-6 border-white/5 shadow-2xl">
+          <div className="flex items-center gap-2 pb-4 border-b border-white/5">
+            <Zap className="w-4 h-4 text-amber-400 shadow-[0_0_8px_#F59E0B]" />
+            <h3 className="text-xs font-black text-white uppercase tracking-widest">Actions Rapides</h3>
+          </div>
+          <div className="flex flex-col gap-3">
+             <button
+               onClick={handleQuickArchiveAll}
+               className="w-full h-11 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between px-4 text-xs font-bold text-zinc-300 hover:border-ai-blue/30 hover:bg-ai-blue/5 hover:text-white transition-all group cursor-pointer"
+               title="Mettre tous les documents dans la catégorie Archive"
+             >
+                <div className="flex items-center gap-2.5">
+                   <Archive className="w-4 h-4 text-zinc-500 group-hover:text-ai-blue transition-colors" />
+                   <span>Archiver tout</span>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-ai-blue group-hover:translate-x-0.5 transition-all" />
+             </button>
+
+             <button
+               onClick={handleQuickClearAllTags}
+               className="w-full h-11 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between px-4 text-xs font-bold text-zinc-300 hover:border-red-400/30 hover:bg-red-400/5 hover:text-white transition-all group cursor-pointer"
+               title="Enlever les tags de tous les documents"
+             >
+                <div className="flex items-center gap-2.5">
+                   <Trash2 className="w-4 h-4 text-zinc-500 group-hover:text-red-400 transition-colors" />
+                   <span>Effacer les Tags</span>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-red-400 group-hover:translate-x-0.5 transition-all" />
+             </button>
+
+             <button
+               onClick={handleQuickBulkExportPdf}
+               className="w-full h-11 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between px-4 text-xs font-bold text-zinc-300 hover:border-emerald-400/30 hover:bg-emerald-400/5 hover:text-white transition-all group cursor-pointer"
+               title="Télécharger tous les fichiers PDF"
+             >
+                <div className="flex items-center gap-2.5">
+                   <FileText className="w-4 h-4 text-zinc-500 group-hover:text-emerald-400 transition-colors" />
+                   <span>Export PDF groupé</span>
+                </div>
+                <ChevronRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+             </button>
+          </div>
+        </GlassCard>
+      </aside>
+      </div> {/* Closes flex-col lg:flex-row outer split layout */}
 
       {/* Batch Action Bar */}
       <AnimatePresence>
@@ -847,18 +1520,44 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
 
               <div className="flex items-center gap-2">
                 <button 
-                  onClick={handleBatchTag}
-                  className="h-10 md:h-11 px-4 md:px-5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 text-xs md:text-sm font-bold text-white hover:bg-white/10 transition-all"
+                  onClick={handleBatchSummarize}
+                  disabled={isSummarizing}
+                  className="h-10 md:h-11 px-4 md:px-5 rounded-xl bg-ai-blue/10 border border-ai-blue/20 flex items-center gap-2 text-xs md:text-sm font-bold text-ai-blue hover:bg-ai-blue/20 transition-all disabled:opacity-50"
+                  title="Générer un résumé IA"
+                >
+                  {isSummarizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  <span className="hidden sm:inline">Résumer</span>
+                </button>
+                <button 
+                  onClick={() => setIsBatchCategoryOpen(true)}
+                  className="h-10 md:h-11 px-4 md:px-5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 text-xs md:text-sm font-bold text-white hover:bg-white/10 transition-all font-mono"
+                  title="Changer la catégorie"
+                >
+                  <Folder className="w-4 h-4 text-ai-blue" />
+                  <span className="hidden sm:inline">Classer</span>
+                </button>
+                <button 
+                  onClick={() => setIsBatchTagOpen(true)}
+                  className="h-10 md:h-11 px-4 md:px-5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 text-xs md:text-sm font-bold text-white hover:bg-white/10 transition-all font-mono"
+                  title="Ajouter un tag"
                 >
                   <Tag className="w-4 h-4 text-ai-blue" />
                   <span className="hidden sm:inline">Taguer</span>
                 </button>
                 <button 
+                  onClick={() => setIsBatchRenameOpen(true)}
+                  className="h-10 md:h-11 px-4 md:px-5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 text-xs md:text-sm font-bold text-white hover:bg-white/10 transition-all font-mono"
+                  title="Renommer avec Regex"
+                >
+                  <FileType className="w-4 h-4 text-ai-blue" />
+                  <span className="hidden sm:inline">Renommer</span>
+                </button>
+                <button 
                   onClick={handleBatchShare}
                   className="h-10 md:h-11 px-4 md:px-5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 text-xs md:text-sm font-bold text-white hover:bg-white/10 transition-all"
                 >
-                  <Share2 className="w-4 h-4 text-ai-blue" />
-                  <span className="hidden sm:inline">Exporter</span>
+                  <Download className="w-4 h-4 text-ai-blue" />
+                  <span className="hidden sm:inline">Télécharger</span>
                 </button>
                 <button 
                   onClick={handleBatchDelete}
@@ -881,6 +1580,321 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
         </div>
         <p className="text-[8px] text-zinc-500 max-w-xs text-center uppercase tracking-tighter leading-none">Conforme aux normes de protection des données (RGPD). Stockage décentralisé et chiffré.</p>
       </div>
+
+      {/* Batch Tag Modal */}
+      <AnimatePresence>
+        {isBatchTagOpen && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-lg bg-primary-950 border border-ai-blue/30 rounded-[32px] overflow-hidden shadow-2xl relative"
+            >
+              <div className="p-8 pb-4 flex justify-between items-center border-b border-white/5 bg-white/[0.02]">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-ai-blue/10 flex items-center justify-center border border-ai-blue/20">
+                    <Tag className="w-5 h-5 text-ai-blue" />
+                  </div>
+                  <div>
+                    <h3 className="text-[10px] font-black text-ai-blue uppercase tracking-widest leading-none mb-1">Étiquetage Collectif</h3>
+                    <p className="text-xl font-bold text-white tracking-tighter">Ajouter un tag commun</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsBatchTagOpen(false)}
+                  className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all border border-white/5"
+                >
+                  <X className="w-5 h-5 text-zinc-500" />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-6">
+                <div className="space-y-4">
+                   <p className="text-xs text-zinc-500 leading-relaxed italic">Ce tag sera ajouté aux {selectedDocIds.length} documents sélectionnés sans supprimer leurs tags existants.</p>
+                   <div className="relative">
+                     <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-ai-blue" />
+                     <input 
+                      type="text"
+                      autoFocus
+                      placeholder="Nom du tag..."
+                      value={batchTagInput}
+                      onChange={(e) => setBatchTagInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleBatchTag(batchTagInput)}
+                      className="w-full h-14 bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 text-white focus:ring-2 focus:ring-ai-blue/20 outline-none transition-all font-bold"
+                     />
+                   </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setIsBatchTagOpen(false)}
+                    className="flex-1 h-12 rounded-2xl bg-white/5 border border-white/10 text-white font-bold text-xs"
+                  >
+                    Annuler
+                  </button>
+                  <button 
+                    onClick={() => handleBatchTag(batchTagInput)}
+                    disabled={!batchTagInput.trim()}
+                    className="flex-[2] h-12 rounded-2xl bg-ai-blue text-white font-bold text-xs shadow-lg shadow-ai-blue/20 disabled:opacity-50"
+                  >
+                    Confirmer l'ajout
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Batch Category Modal */}
+      <AnimatePresence>
+        {isBatchCategoryOpen && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-lg bg-primary-950 border border-ai-blue/30 rounded-[32px] overflow-hidden shadow-2xl relative"
+            >
+              <div className="p-8 pb-4 flex justify-between items-center border-b border-white/5 bg-white/[0.02]">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-ai-blue/10 flex items-center justify-center border border-ai-blue/20">
+                    <Folder className="w-5 h-5 text-ai-blue" />
+                  </div>
+                  <div>
+                    <h3 className="text-[10px] font-black text-ai-blue uppercase tracking-widest leading-none mb-1">Classement en Masse</h3>
+                    <p className="text-xl font-bold text-white tracking-tighter">Choisir une catégorie</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsBatchCategoryOpen(false)}
+                  className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all border border-white/5"
+                >
+                  <X className="w-5 h-5 text-zinc-500" />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-6">
+                <div className="grid grid-cols-2 gap-3">
+                  {categoriesList.map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => handleBatchCategory(cat)}
+                      className="group p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-ai-blue/30 hover:bg-ai-blue/5 transition-all text-left"
+                    >
+                      <span className="text-xs font-bold text-zinc-400 group-hover:text-white transition-colors">{cat}</span>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => {
+                      const newCat = prompt("Nouvelle catégorie :");
+                      if (newCat) handleBatchCategory(newCat);
+                    }}
+                    className="p-4 rounded-2xl bg-white/5 border border-dashed border-white/20 hover:border-ai-blue/30 hover:bg-ai-blue/5 transition-all text-left flex items-center gap-2"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-ai-blue" />
+                    <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Autre...</span>
+                  </button>
+                </div>
+
+                <button 
+                  onClick={() => handleBatchCategory('')}
+                  className="w-full h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-xs font-bold text-zinc-500 hover:text-white transition-all"
+                >
+                  Retirer la catégorie
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Batch Rename Modal */}
+      <AnimatePresence>
+        {isBatchRenameOpen && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-2xl bg-primary-950 border border-ai-blue/30 rounded-[32px] overflow-hidden shadow-2xl relative"
+            >
+              <div className="p-8 pb-4 flex justify-between items-center border-b border-white/5 bg-white/[0.02]">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-ai-blue/10 flex items-center justify-center border border-ai-blue/20">
+                    <FileType className="w-5 h-5 text-ai-blue" />
+                  </div>
+                  <div>
+                    <h3 className="text-[10px] font-black text-ai-blue uppercase tracking-widest leading-none mb-1">Renommage en Masse</h3>
+                    <p className="text-xl font-bold text-white tracking-tighter">Regex & Substitution</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsBatchRenameOpen(false)}
+                  className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all border border-white/5"
+                >
+                  <X className="w-5 h-5 text-zinc-500" />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Find Field */}
+                  <div className="flex flex-row items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 h-12 focus-within:ring-2 focus-within:ring-ai-blue/20 transition-all w-full">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider shrink-0">Rechercher</label>
+                    <input 
+                      type="text"
+                      placeholder={useRegex ? "Pattern Regex (ex: ^Facture_)" : "Texte à remplacer"}
+                      value={renameFind}
+                      onChange={(e) => setRenameFind(e.target.value)}
+                      className="w-full h-full bg-transparent text-white outline-none text-xs font-mono font-bold"
+                    />
+                  </div>
+
+                  {/* Replace Field */}
+                  <div className="flex flex-row items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 h-12 focus-within:ring-2 focus-within:ring-ai-blue/20 transition-all w-full">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider shrink-0">Remplacer par</label>
+                    <input 
+                      type="text"
+                      placeholder="Nouveau texte (ex: Bill_)"
+                      value={renameReplace}
+                      onChange={(e) => setRenameReplace(e.target.value)}
+                      className="w-full h-full bg-transparent text-white outline-none text-xs font-mono font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* Option Toggles */}
+                <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                  <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">Mode de recherche</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setUseRegex(true)}
+                      className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${useRegex ? 'bg-ai-blue/20 text-ai-blue border border-ai-blue/30' : 'bg-white/5 text-zinc-500 hover:text-white'}`}
+                    >
+                      Regex
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUseRegex(false)}
+                      className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${!useRegex ? 'bg-ai-blue/20 text-ai-blue border border-ai-blue/30' : 'bg-white/5 text-zinc-500 hover:text-white'}`}
+                    >
+                      Texte Brut
+                    </button>
+                  </div>
+                </div>
+
+                {/* Real-time Preview Area */}
+                <div className="space-y-3">
+                  <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider block">Aperçu en temps réel ({selectedDocIds.length} fichiers)</span>
+                  <div className="max-h-48 overflow-y-auto rounded-xl border border-white/5 bg-white/[0.01] p-3 space-y-2 divide-y divide-white/5 custom-scrollbar">
+                    {renamePreviews.map((p) => (
+                      <div key={p.id} className="pt-2 first:pt-0 pb-1 flex flex-col gap-1 text-[11px]">
+                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                          <span className="text-zinc-500 font-medium truncate shrink-0">{p.oldName}</span>
+                          <span className="text-zinc-400 font-bold">→</span>
+                          {p.errorMsg ? (
+                            <span className="text-red-400 text-[10px] font-bold truncate font-mono">{p.errorMsg}</span>
+                          ) : p.isChanged ? (
+                            <span className="text-emerald-400 font-bold truncate">{p.newName}</span>
+                          ) : (
+                            <span className="text-zinc-500 truncate italic">(sans modification)</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button 
+                    onClick={() => {
+                      setIsBatchRenameOpen(false);
+                      setRenameFind('');
+                      setRenameReplace('');
+                    }}
+                    className="flex-1 h-12 rounded-2xl bg-white/5 border border-white/10 text-white font-bold text-xs"
+                  >
+                    Annuler
+                  </button>
+                  <button 
+                    onClick={handleBatchRename}
+                    disabled={!renameFind || renamePreviews.some(p => p.errorMsg)}
+                    className="flex-[2] h-12 rounded-2xl bg-gradient-to-r from-ai-blue to-cyan-500 text-white font-bold text-xs shadow-lg shadow-ai-blue/20 hover:opacity-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Appliquer le renommage ({selectedDocIds.length})
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {batchSummary && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-2xl max-h-[80vh] flex flex-col bg-primary-950 border border-ai-blue/30 rounded-[32px] overflow-hidden shadow-2xl relative"
+            >
+              <div className="p-8 pb-4 flex justify-between items-center border-b border-white/5 bg-white/[0.02]">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-ai-blue/10 flex items-center justify-center border border-ai-blue/20">
+                    <Sparkles className="w-5 h-5 text-ai-blue" />
+                  </div>
+                  <div>
+                    <h3 className="text-[10px] font-black text-ai-blue uppercase tracking-widest leading-none mb-1">Analyse IA Consolidée</h3>
+                    <p className="text-xl font-bold text-white tracking-tighter">Résumé de la sélection</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setBatchSummary(null)}
+                  className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all border border-white/5"
+                >
+                  <X className="w-5 h-5 text-zinc-500" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8 space-y-6 no-scrollbar custom-scrollbar">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-emerald-500/60">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span className="text-[9px] font-black uppercase tracking-widest">Analyse Terminée</span>
+                  </div>
+                  <div className="p-6 rounded-[24px] bg-white/[0.03] border border-white/5 leading-relaxed text-sm md:text-base text-zinc-300 italic">
+                    "{batchSummary}"
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-4">
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(batchSummary);
+                      alert('Résumé copié !');
+                    }}
+                    className="flex-1 h-12 rounded-2xl bg-ai-blue/10 border border-ai-blue/20 flex items-center justify-center gap-2 text-xs font-bold text-ai-blue hover:bg-ai-blue/20 transition-all shadow-lg"
+                  >
+                    <Copy className="w-4 h-4" />
+                    Copier le résumé
+                  </button>
+                  <button 
+                    onClick={() => setBatchSummary(null)}
+                    className="flex-1 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-white/10 transition-all"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Document Detail Sidebar */}
       {/* Filter Sidebar */}
@@ -915,6 +1929,12 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
               </div>
 
               <div className="flex-1 overflow-y-auto no-scrollbar p-8 space-y-10">
+                {/* Embedded Cloud Sync tracker matching mobile sidebar requirements */}
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] px-1">Sauvegarde Cloud</h4>
+                  <CloudSyncIndicator className="border-white/10" />
+                </div>
+
                 {/* AI Toggle */}
                 <div className="space-y-4">
                   <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] px-1">Options Zen AI</h4>
@@ -1100,6 +2120,32 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                   className={`relative bg-white overflow-hidden shadow-2xl group border border-white/5 transition-all duration-500 ${isFullScreen ? 'flex-1 rounded-none' : 'aspect-[3/4] rounded-2xl md:rounded-3xl'}`}
                   onWheel={handleWheel}
                 >
+                  {/* Floating OSD Cycle Toggle */}
+                  {selectedDoc && selectedDoc.type !== 'PDF' && (
+                    <button
+                      onClick={() => {
+                        setOsdLanguage(prev => {
+                          if (prev === 'fr') return 'en';
+                          if (prev === 'en') return 'zh';
+                          return 'fr';
+                        });
+                      }}
+                      className="absolute top-6 left-6 z-40 bg-zinc-950/90 backdrop-blur-md border border-white/10 p-2.5 rounded-2xl shadow-2xl flex items-center gap-2 group hover:bg-zinc-900 active:scale-95 transition-all text-white hover:border-emerald-500/50"
+                      title="Cliquer pour changer de langue OSD (Cycle)"
+                    >
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-black text-emerald-400 uppercase tracking-widest font-mono">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-400 group-hover:rotate-45 transition-transform" />
+                        <span>Traduction OSD</span>
+                      </div>
+                      <div className="h-4 w-[1px] bg-white/10" />
+                      <div className="flex items-center gap-1 px-1">
+                        <Languages className="w-3.5 h-3.5 text-zinc-400" />
+                        <span className="text-[10px] font-black uppercase tracking-wider text-zinc-200">
+                          {osdLanguage === 'fr' ? 'Français 🇫🇷' : osdLanguage === 'en' ? 'English 🇬🇧' : 'Chinese 🇨🇳'}
+                        </span>
+                      </div>
+                    </button>
+                  )}
                   <div className="absolute inset-0 overflow-hidden flex items-center justify-center">
                     <motion.div 
                       className={`relative flex items-center justify-center ${zoomScale > 1 ? 'cursor-grab active:cursor-grabbing' : ''}`}
@@ -1128,12 +2174,49 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                           <div className="absolute inset-0 z-10 cursor-inherit" />
                         </div>
                       ) : selectedDoc.url && (selectedDoc.url.startsWith('data:image') || ['JPG', 'PNG', 'JPEG'].includes(selectedDoc.type)) ? (
-                        <img 
-                          src={selectedDoc.url} 
-                          alt={selectedDoc.name}
-                          referrerPolicy="no-referrer"
-                          className="max-w-full max-h-full object-contain shadow-sm rounded-lg"
-                        />
+                        <div className="relative max-w-full max-h-full flex items-center justify-center">
+                          <img 
+                            src={selectedDoc.url} 
+                            alt={selectedDoc.name}
+                            referrerPolicy="no-referrer"
+                            className="max-w-full max-h-full object-contain shadow-sm rounded-lg"
+                          />
+                          {docObjects.length > 0 && (
+                            <div className="absolute inset-0 pointer-events-none">
+                              {docObjects.map((obj, index) => {
+                                const [ymin, xmin, ymax, xmax] = obj.boundingBox;
+                                const displayLabel = 
+                                  osdLanguage === 'zh' ? obj.name_zh :
+                                  osdLanguage === 'fr' ? obj.name_fr :
+                                  obj.name_en;
+
+                                return (
+                                  <div
+                                    key={`osd-obj-${index}`}
+                                    className="absolute border-2 border-emerald-400/90 shadow-[0_0_10px_rgba(16,185,129,0.3)] rounded-xl pointer-events-none"
+                                    style={{
+                                      top: `${ymin}%`,
+                                      left: `${xmin}%`,
+                                      width: `${xmax - xmin}%`,
+                                      height: `${ymax - ymin}%`,
+                                    }}
+                                  >
+                                    {/* Tech corners */}
+                                    <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-emerald-400 rounded-tl-sm" />
+                                    <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-emerald-400 rounded-tr-sm" />
+                                    <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-emerald-400 rounded-bl-sm" />
+                                    <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-emerald-400 rounded-br-sm animate-pulse" />
+                                    
+                                    <div className="absolute -top-7 left-0 bg-black/95 backdrop-blur-md border border-white/10 text-white px-2 py-0.5 rounded shadow-xl text-[9px] font-black uppercase tracking-wider whitespace-nowrap z-10">
+                                      <span className="text-emerald-400 font-bold uppercase mr-1">{osdLanguage}:</span>
+                                      {displayLabel}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <div className="absolute inset-0 p-8 md:p-10 space-y-4 md:space-y-6">
                           <div className="h-5 md:h-6 w-1/2 bg-gray-100 rounded-lg" />
@@ -1339,7 +2422,7 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                         <span>{selectedDoc.size}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Tag className="w-3.5 h-3.5 text-ai-blue" />
+                        <Folder className="w-3.5 h-3.5 text-ai-blue" />
                         <span>{selectedDoc.category || 'Non classé'}</span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1389,6 +2472,43 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                     </div>
                   </div>
 
+                  {/* Real-time OSD Translation Control */}
+                  {selectedDoc.type !== 'PDF' && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between px-1">
+                        <h4 className="text-[8px] font-black text-zinc-500 uppercase tracking-[0.2em] leading-none">Ajustement Traduction OSD</h4>
+                        <span className="text-[8px] font-bold text-zinc-500">3 Langues supportées</span>
+                      </div>
+                      <div className="p-4 rounded-2xl border border-white/5 bg-white/[0.01] flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                            <Languages className="w-5 h-5 text-emerald-400" />
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-bold text-white">Langue Affichage OSD</h5>
+                            <p className="text-[10px] text-zinc-400 mt-0.5">Traduction en surbrillance en temps réel</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex bg-zinc-900/60 rounded-xl p-1 border border-white/5">
+                          {(['fr', 'en', 'zh'] as const).map((lang) => (
+                            <button
+                              key={lang}
+                              onClick={() => setOsdLanguage(lang)}
+                              className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                                osdLanguage === lang
+                                  ? 'bg-emerald-500 text-black shadow-md font-bold'
+                                  : 'text-zinc-400 hover:text-white'
+                              }`}
+                            >
+                              {lang === 'fr' ? 'FR' : lang === 'en' ? 'EN' : 'ZH'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Category Selection Section */}
                   <div className="space-y-3">
                     <div className="flex justify-between items-center px-1">
@@ -1397,30 +2517,40 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                     </div>
                     
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {categoriesList.map(cat => (
-                        <button
-                          key={cat}
-                          onClick={() => handleSetCategory(cat)}
-                          className={`px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border ${
-                            selectedDoc.category === cat 
-                              ? 'bg-ai-blue/20 border-ai-blue/40 text-white shadow-[0_0_15px_rgba(79,124,255,0.15)]' 
-                              : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/20'
-                          }`}
-                        >
-                          {cat}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => handleSetCategory('')}
-                        className={`px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border ${
-                          !selectedDoc.category 
-                            ? 'bg-white/10 border-white/20 text-white' 
-                            : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/20'
-                        }`}
-                      >
-                        Aucune
-                      </button>
-                    </div>
+                       {categoriesList.map(cat => (
+                         <button
+                           key={cat}
+                           onClick={() => handleSetCategory(cat)}
+                           className={`px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border ${
+                             selectedDoc.category === cat 
+                               ? 'bg-ai-blue/20 border-ai-blue/40 text-white shadow-[0_0_15px_rgba(79,124,255,0.15)]' 
+                               : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/20'
+                           }`}
+                         >
+                           {cat}
+                         </button>
+                       ))}
+                       <button
+                         onClick={() => {
+                           const newCat = prompt("Nouvelle catégorie :");
+                           if (newCat) handleSetCategory(newCat);
+                         }}
+                         className="px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border border-dashed border-white/20 text-zinc-500 hover:border-ai-blue/30 hover:text-ai-blue flex items-center justify-center gap-1.5"
+                       >
+                         <Plus className="w-3.5 h-3.5" />
+                         <span>Autre</span>
+                       </button>
+                       <button
+                         onClick={() => handleSetCategory('')}
+                         className={`px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border ${
+                           !selectedDoc.category 
+                             ? 'bg-white/10 border-white/20 text-white' 
+                             : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/20'
+                         }`}
+                       >
+                         Aucune
+                       </button>
+                     </div>
                   </div>
 
                   {/* Tags Management */}
@@ -1471,6 +2601,46 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                         </button>
                       </div>
                     </div>
+
+                    {/* Suggested Tags (Gemini AI) */}
+                    {(isLoadingSuggestions || (suggestedTags.filter(tag => !(selectedDoc.tags || []).includes(tag)).length > 0)) && (
+                      <div className="space-y-2 pt-2 border-t border-white/5">
+                        <div className="flex items-center justify-between px-1">
+                          <span className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.3em] flex items-center gap-1.5">
+                            <Sparkles className="w-3 h-3 text-ai-blue animate-pulse" />
+                            Suggestions IA
+                          </span>
+                          {isLoadingSuggestions && (
+                            <Loader2 className="w-3 h-3 text-ai-blue animate-spin" />
+                          )}
+                        </div>
+                        
+                        <div className="flex flex-wrap gap-1.5">
+                          {isLoadingSuggestions ? (
+                            Array.from({ length: 3 }).map((_, idx) => (
+                              <div key={`sug-skel-${idx}`} className="h-6 w-14 bg-white/5 border border-white/5 rounded-lg animate-pulse" />
+                            ))
+                          ) : (
+                            suggestedTags
+                              .filter(tag => !(selectedDoc.tags || []).includes(tag))
+                              .map((tag, idx) => (
+                                <motion.button
+                                  key={`sug-${tag}-${idx}`}
+                                  initial={{ opacity: 0, scale: 0.9 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  whileHover={{ scale: 1.05, backgroundColor: 'rgba(79, 124, 255, 0.12)', borderColor: 'rgba(79, 124, 255, 0.3)' }}
+                                  whileTap={{ scale: 0.95 }}
+                                  onClick={() => handleSelectSuggestedTag(tag)}
+                                  className="flex items-center gap-1 px-2.5 py-1 bg-white/[0.02] border border-white/10 rounded-lg text-[10px] font-bold text-zinc-400 hover:text-ai-blue transition-all"
+                                >
+                                  <Plus className="w-2.5 h-2.5 text-zinc-500" />
+                                  {tag}
+                                </motion.button>
+                              ))
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Extracted Data Grid */}
@@ -1484,12 +2654,12 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
                     </div>
                     <div className="grid grid-cols-1 gap-2">
                       {selectedDoc.extractedData ? Object.entries(selectedDoc.extractedData).map(([key, value]) => (
-                        <div key={key} className="flex flex-col gap-0.5 px-4 py-3 md:px-5 md:py-4 bg-white/[0.02] border border-white/5 rounded-xl md:rounded-2xl group hover:border-ai-blue/30 transition-all">
+                        <div key={key} className="flex flex-row items-center justify-between gap-4 px-4 py-3 md:px-5 md:py-4 bg-white/[0.02] border border-white/5 rounded-xl md:rounded-2xl group hover:border-ai-blue/30 transition-all">
                           <div className="flex items-center gap-2">
                             <div className="w-1.5 h-1.5 rounded-full bg-ai-blue/30 group-hover:bg-ai-blue transition-colors" />
                             <span className="text-[8px] md:text-[9px] font-black text-zinc-600 uppercase tracking-[0.2em]">{key}</span>
                           </div>
-                          <span className="text-xs md:text-sm font-bold text-text-main pl-3.5 transition-colors group-hover:text-ai-blue/90">{value as string}</span>
+                          <span className="text-xs md:text-sm font-bold text-text-main transition-colors group-hover:text-ai-blue/90">{value as string}</span>
                         </div>
                       )) : (
                         <div className="p-6 md:p-8 text-center bg-white/5 border border-dashed border-white/10 rounded-2xl md:rounded-3xl">

@@ -1,17 +1,44 @@
 import { openDB, IDBPDatabase } from 'idb';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { doc, setDoc, getDocs, collection, deleteDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import { DocumentMetadata } from '../types';
+import { RECENT_SCANS } from '../constants';
 
 const DB_NAME = 'ZenScanDB';
 const STORE_NAME = 'documents';
 const DB_VERSION = 1;
 
+export interface SyncStatus {
+  state: 'synced' | 'syncing' | 'pending' | 'offline' | 'error' | 'disabled';
+  progress: number; // 0 to 100
+  totalFiles: number;
+  syncedFiles: number;
+  lastSyncedAt: string | null;
+  errorMessage?: string;
+  syncedCount: number;
+  localCount: number;
+}
+
 class StorageService {
   private localDb: Promise<IDBPDatabase> | null = null;
+  private syncListeners: Set<(status: SyncStatus) => void> = new Set();
+  private currentSyncStatus: SyncStatus = {
+    state: 'synced',
+    progress: 100,
+    totalFiles: 0,
+    syncedFiles: 0,
+    lastSyncedAt: localStorage.getItem('zenScanLastSyncedAt') || null,
+    syncedCount: 0,
+    localCount: 0
+  };
+  private activeSyncPromise: Promise<void> | null = null;
 
   constructor() {
-    this.initLocalDb();
+    this.initLocalDb().then(() => {
+      this.calculateSyncRatios();
+    }).catch(err => console.error("[Storage] Init calculate sync failed:", err));
+    this.initAuthAndOnlineListeners();
   }
 
   private async initLocalDb() {
@@ -23,6 +50,294 @@ class StorageService {
         }
       },
     });
+    await this.localDb;
+  }
+
+  async calculateSyncRatios() {
+    try {
+      const ldb = await this.localDb;
+      if (!ldb) return;
+      const localDocs = await ldb.getAll(STORE_NAME);
+      const total = localDocs.length;
+      
+      // If no docs exist, everything is in sync implicitly or default seed handles it
+      // Standard docs seeded start synced or not synced based on database seed.
+      // Let's count how many have isSynced === true
+      const synced = localDocs.filter(d => d.isSynced === true).length;
+      
+      this.updateSyncStatus({
+        localCount: total,
+        syncedCount: synced
+      });
+    } catch (err) {
+      console.error("[Storage] Failed to compute sync ratios:", err);
+    }
+  }
+
+  private initAuthAndOnlineListeners() {
+    if (typeof window === 'undefined') return;
+    
+    // Auto sync when user authentication changes
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        this.sync().catch(err => console.error("[Storage] Auto auth sync failed:", err));
+      } else {
+        this.updateSyncStatus({
+          state: 'pending',
+          progress: 0,
+          totalFiles: 0,
+          syncedFiles: 0
+        });
+      }
+    });
+
+    // Handle online network recovery
+    window.addEventListener('online', () => {
+      console.log("[Storage] Online detected, triggering sync...");
+      this.sync().catch(err => console.error("[Storage] Online recovery sync failed:", err));
+    });
+
+    window.addEventListener('offline', () => {
+      this.updateSyncStatus({ state: 'offline' });
+    });
+  }
+
+  subscribeSyncStatus(listener: (status: SyncStatus) => void) {
+    this.syncListeners.add(listener);
+    listener(this.currentSyncStatus);
+    return () => {
+      this.syncListeners.delete(listener);
+    };
+  }
+
+  private updateSyncStatus(updates: Partial<SyncStatus>) {
+    this.currentSyncStatus = { ...this.currentSyncStatus, ...updates };
+    if (updates.lastSyncedAt !== undefined) {
+      if (updates.lastSyncedAt) {
+        localStorage.setItem('zenScanLastSyncedAt', updates.lastSyncedAt);
+      } else {
+        localStorage.removeItem('zenScanLastSyncedAt');
+      }
+    }
+    this.syncListeners.forEach(listener => listener(this.currentSyncStatus));
+  }
+
+  getSyncStatus(): SyncStatus {
+    return this.currentSyncStatus;
+  }
+
+  setCloudSync(enabled: boolean) {
+    localStorage.setItem('zenScanCloudSync', enabled ? 'true' : 'false');
+    this.syncUserProfile().catch(err => console.error(err));
+    this.sync().catch(err => console.error(err));
+  }
+
+  async sync(): Promise<void> {
+    const userId = auth.currentUser?.uid;
+    const isCloudSyncEnabled = localStorage.getItem('zenScanCloudSync') !== 'false';
+
+    if (!userId) {
+      this.updateSyncStatus({ state: 'pending', errorMessage: 'Veuillez vous connecter pour activer la synchronisation.' });
+      return;
+    }
+
+    if (!isCloudSyncEnabled) {
+      this.updateSyncStatus({ state: 'disabled' });
+      return;
+    }
+
+    if (!navigator.onLine) {
+      this.updateSyncStatus({ state: 'offline' });
+      return;
+    }
+
+    if (this.activeSyncPromise) {
+      return this.activeSyncPromise;
+    }
+
+    this.activeSyncPromise = this.executeSync(userId);
+    try {
+      await this.activeSyncPromise;
+    } finally {
+      this.activeSyncPromise = null;
+    }
+  }
+
+  private async executeSync(userId: string): Promise<void> {
+    this.updateSyncStatus({
+      state: 'syncing',
+      progress: 0,
+      totalFiles: 0,
+      syncedFiles: 0,
+      errorMessage: undefined
+    });
+
+    try {
+      const ldb = await this.localDb;
+      if (!ldb) {
+        throw new Error("Base de données locale non initialisée");
+      }
+
+      // 1. Fetch Firestore Documents
+      const collectionRef = collection(db, 'users', userId, 'documents');
+      const qSnapshot = await getDocs(collectionRef);
+      const firestoreDocs = qSnapshot.docs.map(docSnap => ({
+        ...docSnap.data(),
+        id: docSnap.id
+      })) as any[];
+
+      // 2. Fetch Local Documents
+      const localDocs = await ldb.getAll(STORE_NAME);
+
+      const localMap = new Map<string, any>(localDocs.map(d => [d.id, d]));
+      const firestoreMap = new Map<string, any>(firestoreDocs.map(d => [d.id, d]));
+
+      const uploadList: any[] = [];
+      const downloadList: any[] = [];
+
+      // Helper to evaluate Date representation milliseconds
+      const getMs = (val: any) => {
+        if (!val) return 0;
+        if (typeof val === 'object' && val.toDate) return val.toDate().getTime();
+        return new Date(val).getTime();
+      };
+
+      // Determine local-only or updated documents to upload
+      for (const ldoc of localDocs) {
+        const fdoc = firestoreMap.get(ldoc.id);
+        if (!fdoc) {
+          uploadList.push(ldoc);
+          if (ldoc.isSynced !== false) {
+            ldoc.isSynced = false;
+            await ldb.put(STORE_NAME, ldoc);
+          }
+        } else {
+          const lTime = getMs(ldoc.updatedAt || ldoc.modifiedAt);
+          const fTime = getMs(fdoc.updatedAt || fdoc.modifiedAt);
+          // Standard 1 second tolerance
+          if (lTime > fTime + 1000) {
+            uploadList.push(ldoc);
+            if (ldoc.isSynced !== false) {
+              ldoc.isSynced = false;
+              await ldb.put(STORE_NAME, ldoc);
+            }
+          } else {
+            if (!ldoc.isSynced) {
+              ldoc.isSynced = true;
+              await ldb.put(STORE_NAME, ldoc);
+            }
+          }
+        }
+      }
+
+      // Determine Firestore documents to download
+      for (const fdoc of firestoreDocs) {
+        const ldoc = localMap.get(fdoc.id);
+        if (!ldoc) {
+          downloadList.push(fdoc);
+        } else {
+          const lTime = getMs(ldoc.updatedAt || ldoc.modifiedAt);
+          const fTime = getMs(fdoc.updatedAt || fdoc.modifiedAt);
+          if (fTime > lTime + 1000) {
+            downloadList.push(fdoc);
+          }
+        }
+      }
+
+      const totalActions = uploadList.length + downloadList.length;
+
+      if (totalActions === 0) {
+        this.updateSyncStatus({
+          state: 'synced',
+          progress: 100,
+          totalFiles: 0,
+          syncedFiles: 0,
+          lastSyncedAt: new Date().toISOString()
+        });
+        await this.calculateSyncRatios();
+        return;
+      }
+
+      this.updateSyncStatus({
+        state: 'syncing',
+        progress: 0,
+        totalFiles: totalActions,
+        syncedFiles: 0
+      });
+
+      let completedActions = 0;
+
+      // Execute uploads
+      for (const ldoc of uploadList) {
+        const docPath = `users/${userId}/documents/${ldoc.id}`;
+        let success = false;
+        try {
+          const docRef = doc(db, 'users', userId, 'documents', ldoc.id);
+          const firestoreDoc = {
+            ...ldoc,
+            isSynced: true,
+            userId,
+            updatedAt: serverTimestamp(),
+            createdAt: ldoc.createdAt ? new Date(ldoc.createdAt) : serverTimestamp()
+          };
+          await setDoc(docRef, firestoreDoc, { merge: true });
+          success = true;
+        } catch (err) {
+          console.error(`Upload failed for document ${ldoc.id}:`, err);
+        }
+
+        if (success) {
+          await ldb.put(STORE_NAME, { ...ldoc, isSynced: true });
+        }
+
+        completedActions++;
+        this.updateSyncStatus({
+          syncedFiles: completedActions,
+          progress: Math.round((completedActions / totalActions) * 100)
+        });
+        await this.calculateSyncRatios();
+        // Create a visual pace for status transitions tracking
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+
+      // Execute downloads
+      for (const fdoc of downloadList) {
+        try {
+          const existingLocal = await ldb.get(STORE_NAME, fdoc.id);
+          // Preserve local base64/local URL if Firestore doesn't provide one
+          if (existingLocal && existingLocal.url && !fdoc.url) {
+            const mergedDoc = { ...fdoc, url: existingLocal.url, isSynced: true };
+            await ldb.put(STORE_NAME, mergedDoc);
+          } else {
+            await ldb.put(STORE_NAME, { ...fdoc, isSynced: true });
+          }
+        } catch (err) {
+          console.error(`Download failed for document ${fdoc.id}:`, err);
+        }
+
+        completedActions++;
+        this.updateSyncStatus({
+          syncedFiles: completedActions,
+          progress: Math.round((completedActions / totalActions) * 100)
+        });
+        await this.calculateSyncRatios();
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+
+      this.updateSyncStatus({
+        state: 'synced',
+        progress: 100,
+        lastSyncedAt: new Date().toISOString()
+      });
+      await this.calculateSyncRatios();
+
+    } catch (err: any) {
+      console.error("[Storage] Bidirectional sync engine error:", err);
+      this.updateSyncStatus({
+        state: 'error',
+        errorMessage: err.message || "Erreur lors de la synchronisation cloud"
+      });
+    }
   }
 
   async saveDocument(document: DocumentMetadata) {
@@ -34,6 +349,7 @@ class StorageService {
       ...document, 
       modifiedAt: now,
       updatedAt: now,
+      isSynced: (document as any).isSynced === true,
       createdAt: document.createdAt instanceof Date 
         ? document.createdAt.toISOString() 
         : (document.createdAt || now)
@@ -56,16 +372,35 @@ class StorageService {
         const docRef = doc(db, 'users', userId, 'documents', document.id);
         const firestoreDoc = {
            ...documentCopy,
+           isSynced: true,
            userId, // Ensure userId is set for rules
            updatedAt: serverTimestamp(),
            createdAt: document.createdAt ? new Date(document.createdAt) : serverTimestamp()
         };
         await setDoc(docRef, firestoreDoc, { merge: true });
+        
+        // Update local status with synced: true
+        const ldb = await this.localDb;
+        if (ldb) {
+          documentCopy.isSynced = true;
+          await ldb.put(STORE_NAME, documentCopy);
+        }
+
+        // Minor sync update
+        this.updateSyncStatus({
+          lastSyncedAt: new Date().toISOString()
+        });
       } catch (err) {
         handleFirestoreError(err, OperationType.WRITE, docPath);
       }
+    } else {
+      // Trigger pending indicator if online but cloud sync is enabled manually later
+      if (isCloudSyncEnabled) {
+        this.updateSyncStatus({ state: 'pending' });
+      }
     }
 
+    await this.calculateSyncRatios();
     return this.normalizeDoc(documentCopy);
   }
 
@@ -109,44 +444,28 @@ class StorageService {
       const ldb = await this.localDb;
       if (ldb) {
         docs = await ldb.getAll(STORE_NAME);
+        
+        // If empty, seed database first time with the RECENT_SCANS
+        if (docs.length === 0) {
+          console.log("[Storage] Database empty, seeding with default library documents...");
+          for (const item of RECENT_SCANS) {
+            await this.saveDocument(item);
+          }
+          docs = await ldb.getAll(STORE_NAME);
+        }
       }
     } catch (err) {
       console.error("Local storage read failed:", err);
     }
 
-    // 2. If enabled and online, background sync from Firestore (Intuitive)
+    // 2. Clear sync in background to update progress trackers and sync files
     if (userId && isCloudSyncEnabled && navigator.onLine) {
-      const collectionPath = `users/${userId}/documents`;
-      try {
-        const q = query(collection(db, 'users', userId, 'documents'), orderBy('updatedAt', 'desc'));
-        const querySnapshot = await getDocs(q);
-        const firestoreDocs = querySnapshot.docs.map(d => ({ ...d.data(), id: d.id } as any));
-        
-        if (firestoreDocs.length > 0) {
-          const ldb = await this.localDb;
-          if (ldb) {
-            for (const fdoc of firestoreDocs) {
-              const existingLocal = await ldb.get(STORE_NAME, fdoc.id);
-              // Handle URL priority (local base64 vs cloud URL)
-              if (existingLocal && existingLocal.url && !fdoc.url) {
-                const mergedDoc = { ...fdoc, url: existingLocal.url };
-                await ldb.put(STORE_NAME, mergedDoc);
-              } else {
-                await ldb.put(STORE_NAME, fdoc);
-              }
-            }
-            // Refresh docs from local after sync
-            const updatedLocalDocs = await ldb.getAll(STORE_NAME);
-            docs = updatedLocalDocs;
-          }
-        }
-      } catch (err) {
-        console.warn("Firestore background sync failed:", err);
-        // We don't throw here to allow app to function with local data
-      }
+      // Non-blocking trigger of the bidirectional sync
+      this.sync().catch(err => console.error("Auto background sync failure:", err));
     }
 
     const uniqueDocs = Array.from(new Map(docs.map(d => [d.id, d])).values());
+    this.calculateSyncRatios().catch(err => console.error(err));
     return uniqueDocs.map(d => this.normalizeDoc(d)).sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime());
   }
 
@@ -169,22 +488,19 @@ class StorageService {
       const docPath = `users/${userId}/documents/${docId}`;
       try {
         await deleteDoc(doc(db, 'users', userId, 'documents', docId));
+        this.updateSyncStatus({
+          lastSyncedAt: new Date().toISOString()
+        });
       } catch (err) {
         handleFirestoreError(err, OperationType.DELETE, docPath);
       }
     }
+    await this.calculateSyncRatios();
   }
 
   // Handle background sync when coming back online
   initOnlineSync() {
-    window.addEventListener('online', async () => {
-      console.log("[Storage] Online detected, triggering background sync...");
-      const user = auth.currentUser;
-      if (user) {
-        await this.getDocuments();
-        await this.syncUserProfile();
-      }
-    });
+    // Already set up inside initAuthAndOnlineListeners
   }
 
   // Sync user profile for better management
@@ -209,5 +525,5 @@ class StorageService {
 }
 
 export const storageService = new StorageService();
-storageService.initOnlineSync();
+
 
