@@ -36,6 +36,51 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
   const [isDocumentDetected, setIsDocumentDetected] = useState(false);
   const [detectionProgress, setDetectionProgress] = useState(0);
+  const [ripples, setRipples] = useState<{ id: number; key: number }[]>([]);
+  
+  const triggerCaptureShockwave = () => {
+    const id = Date.now() + Math.random();
+    setRipples(prev => [...prev, { id, key: id }]);
+    setTimeout(() => {
+      setRipples(prev => prev.filter(r => r.id !== id));
+    }, 1200);
+  };
+  
+  const [showCaptureSettings, setShowCaptureSettings] = useState(false);
+  const [autoAssign, setAutoAssign] = useState(() => {
+    return localStorage.getItem('zenScanAutoAssignFolder') !== 'false';
+  });
+  const [mapping, setMapping] = useState<Record<string, string>>(() => {
+    const defaultMapping: Record<string, string> = {
+      'Factures': 'f_receipts',
+      'Recettes': 'f_receipts',
+      'Contrats': 'f_work',
+      'Identité': 'f_personal',
+      'Personnel': 'f_personal',
+      'Travail': 'f_work'
+    };
+    const saved = localStorage.getItem('zenScanAutoAssignMapping');
+    if (saved) {
+      try {
+        return { ...defaultMapping, ...JSON.parse(saved) };
+      } catch (e) {}
+    }
+    return defaultMapping;
+  });
+  const [availableFolders] = useState<{ id: string; name: string; color: string }[]>(() => {
+    const saved = localStorage.getItem('zenScanFolders');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return [
+      { id: 'f_personal', name: 'Personnel', color: '#3B82F6' },
+      { id: 'f_work', name: 'Professionnel', color: '#10B981' },
+      { id: 'f_important', name: 'Action Requis', color: '#EF4444' },
+      { id: 'f_receipts', name: 'Notes & Reçus', color: '#F59E0B' }
+    ];
+  });
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -299,6 +344,9 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
 
   const startScan = () => {
     if (status !== ScanStatus.IDLE) return;
+    
+    // Trigger the visual shockwave ripples animation
+    triggerCaptureShockwave();
     
     // Play shutter sound immediately
     if (shutterSoundRef.current) {
@@ -970,7 +1018,7 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
         </div>
 
         <button 
-          onClick={() => {}}
+          onClick={() => setShowCaptureSettings(true)}
           className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 border border-white/10 backdrop-blur-3xl active:scale-90 transition-transform group"
         >
           <Settings className="w-6 h-6 text-white group-hover:text-ai-blue transition-colors" />
@@ -1071,10 +1119,62 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
         {/* Framing Overlay */}
         <div className={`relative w-[85%] max-w-sm transition-all duration-700 ease-[0.22,1,0.36,1] ${currentConfig.aspect} pointer-events-auto`}>
           {/* Advanced Corners */}
-          <div className={`absolute -top-1 -left-1 w-16 h-16 border-t-[5px] border-l-[5px] rounded-tl-[40px] transition-colors duration-500 ${isDocumentDetected && detectionProgress > 50 ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)]' : 'border-ai-blue ai-glow'}`} />
-          <div className={`absolute -top-1 -right-1 w-16 h-16 border-t-[5px] border-r-[5px] rounded-tr-[40px] transition-colors duration-500 ${isDocumentDetected && detectionProgress > 50 ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)]' : 'border-ai-blue ai-glow'}`} />
-          <div className={`absolute -bottom-1 -left-1 w-16 h-16 border-b-[5px] border-l-[5px] rounded-bl-[40px] transition-colors duration-500 ${isDocumentDetected && detectionProgress > 50 ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)]' : 'border-ai-blue ai-glow'}`} />
-          <div className={`absolute -bottom-1 -right-1 w-16 h-16 border-b-[5px] border-r-[5px] rounded-br-[40px] transition-colors duration-500 ${isDocumentDetected && detectionProgress > 50 ? 'border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)]' : 'border-ai-blue ai-glow'}`} />
+          <motion.div
+            animate={{
+              x: isDocumentDetected ? 14 : 0,
+              y: isDocumentDetected ? 14 : 0,
+              scale: isDocumentDetected ? 0.94 : 1,
+              borderTopLeftRadius: isDocumentDetected ? "16px" : "40px",
+              borderColor: isDocumentDetected ? "#10b981" : "#3b82f6",
+              boxShadow: isDocumentDetected 
+                ? "0 0 20px rgba(16, 185, 129, 0.45)" 
+                : "0 0 15px rgba(59, 130, 246, 0.2)"
+            }}
+            transition={{ type: "spring", stiffness: 100, damping: 14 }}
+            className="absolute -top-1 -left-1 w-16 h-16 border-t-[5px] border-l-[5px] pointer-events-none"
+          />
+          <motion.div
+            animate={{
+              x: isDocumentDetected ? -14 : 0,
+              y: isDocumentDetected ? 14 : 0,
+              scale: isDocumentDetected ? 0.94 : 1,
+              borderTopRightRadius: isDocumentDetected ? "16px" : "40px",
+              borderColor: isDocumentDetected ? "#10b981" : "#3b82f6",
+              boxShadow: isDocumentDetected 
+                ? "0 0 20px rgba(16, 185, 129, 0.45)" 
+                : "0 0 15px rgba(59, 130, 246, 0.2)"
+            }}
+            transition={{ type: "spring", stiffness: 100, damping: 14 }}
+            className="absolute -top-1 -right-1 w-16 h-16 border-t-[5px] border-r-[5px] pointer-events-none"
+          />
+          <motion.div
+            animate={{
+              x: isDocumentDetected ? 14 : 0,
+              y: isDocumentDetected ? -14 : 0,
+              scale: isDocumentDetected ? 0.94 : 1,
+              borderBottomLeftRadius: isDocumentDetected ? "16px" : "40px",
+              borderColor: isDocumentDetected ? "#10b981" : "#3b82f6",
+              boxShadow: isDocumentDetected 
+                ? "0 0 20px rgba(16, 185, 129, 0.45)" 
+                : "0 0 15px rgba(59, 130, 246, 0.2)"
+            }}
+            transition={{ type: "spring", stiffness: 100, damping: 14 }}
+            className="absolute -bottom-1 -left-1 w-16 h-16 border-b-[5px] border-l-[5px] pointer-events-none"
+          />
+          <motion.div
+            animate={{
+              x: isDocumentDetected ? -14 : 0,
+              y: isDocumentDetected ? -14 : 0,
+              scale: isDocumentDetected ? 0.94 : 1,
+              borderBottomRightRadius: isDocumentDetected ? "16px" : "40px",
+              borderColor: isDocumentDetected ? "#10b981" : "#3b82f6",
+              boxShadow: isDocumentDetected 
+                ? "0 0 20px rgba(16, 185, 129, 0.45)" 
+                : "0 0 15px rgba(59, 130, 246, 0.2)"
+            }}
+            transition={{ type: "spring", stiffness: 100, damping: 14 }}
+            className="absolute -bottom-1 -right-1 w-16 h-16 border-b-[5px] border-r-[5px] pointer-events-none"
+          />
 
           {/* Detection Pulse Overlay */}
           <AnimatePresence>
@@ -1316,6 +1416,38 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
                   )}
                 </AnimatePresence>
 
+                {/* Shutter Capture Shockwave (Visual Ripples) */}
+                <AnimatePresence>
+                  {ripples.map((ripple) => (
+                    <div key={ripple.key} className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
+                      {/* Shockwave circle 1 - Fast bright white */}
+                      <motion.div
+                        initial={{ scale: 1, opacity: 0.9 }}
+                        animate={{ scale: 2.8, opacity: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.6, ease: "easeOut" }}
+                        className="absolute inset-0 rounded-full border-[3px] border-white"
+                      />
+                      {/* Shockwave circle 2 - Premium Dynamic AI-Blue */}
+                      <motion.div
+                        initial={{ scale: 1, opacity: 0.7 }}
+                        animate={{ scale: 3.6, opacity: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.8, ease: "easeOut", delay: 0.05 }}
+                        className="absolute inset-0 rounded-full border-[5px] border-ai-blue"
+                      />
+                      {/* Shockwave circle 3 - Glow emerald green if doc is detected, otherwise blue */}
+                      <motion.div
+                        initial={{ scale: 1, opacity: 0.5 }}
+                        animate={{ scale: 4.4, opacity: 0 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 1.0, ease: "easeOut", delay: 0.12 }}
+                        className={`absolute inset-0 rounded-full border-2 ${isDocumentDetected ? 'border-emerald-400 font-bold' : 'border-ai-blue font-bold'}`}
+                      />
+                    </div>
+                  ))}
+                </AnimatePresence>
+
                 <button 
                   onClick={startScan}
                   disabled={status !== ScanStatus.IDLE}
@@ -1392,6 +1524,123 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
         <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Capture Chiffrée 256-bit</span>
       </div>
+
+      {/* Capture Settings Modal */}
+      <AnimatePresence>
+        {showCaptureSettings && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowCaptureSettings(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            
+            {/* Modal Content */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 30 }}
+              className="relative w-full max-w-lg overflow-hidden rounded-[28px] border border-white/10 bg-[#0A0A0B]/95 backdrop-blur-3xl p-6 md:p-8 shadow-[0_20px_50px_rgba(79,124,255,0.15)] space-y-6 max-h-[90vh] overflow-y-auto no-scrollbar pointer-events-auto"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                <div className="space-y-1">
+                  <p className="text-[9px] font-black text-ai-blue uppercase tracking-[0.3em] leading-none text-left">Moteur Algorithmique</p>
+                  <h3 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-ai-blue" />
+                    <span>Paramètres de Capture</span>
+                  </h3>
+                </div>
+                <button 
+                  onClick={() => setShowCaptureSettings(false)}
+                  className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-zinc-400 hover:bg-white/10 hover:text-white transition-all cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Main settings options */}
+              <div className="space-y-5 text-left">
+                {/* Auto Assign Toggle */}
+                <div className="p-4 rounded-2xl border border-white/5 bg-white/[0.01] flex items-center justify-between gap-4">
+                  <div className="flex-1 space-y-1">
+                    <p className="text-sm font-bold text-white leading-snug">Classement Automatique par l'IA</p>
+                    <p className="text-xs text-zinc-500 font-medium">
+                      Assigne automatiquement un dossier cible à chaque document détecté par l'IA selon son type.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const value = !autoAssign;
+                      setAutoAssign(value);
+                      localStorage.setItem('zenScanAutoAssignFolder', String(value));
+                    }}
+                    className={`w-11 h-6 rounded-full relative transition-colors cursor-pointer shrink-0 ${autoAssign ? 'bg-ai-blue' : 'bg-zinc-805 bg-zinc-800'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${autoAssign ? 'right-1' : 'left-1'}`} />
+                  </button>
+                </div>
+
+                {autoAssign && (
+                  <div className="space-y-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1">Règles d'Assignation IA</p>
+                      <p className="text-[10px] text-zinc-600 font-medium ml-1">Mappe les types de documents détectés vers vos dossiers spécifiques :</p>
+                    </div>
+
+                    <div className="space-y-3">
+                      {[
+                        { label: 'Factures & Reçus (Finance)', typeKey: 'Factures' },
+                        { label: 'Contrats & Job (Professionnel)', typeKey: 'Contrats' },
+                        { label: 'Documents d\'Identité', typeKey: 'Identité' },
+                        { label: 'Personnel & Autre', typeKey: 'Personnel' },
+                      ].map((rule) => (
+                        <div key={rule.typeKey} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3.5 rounded-xl border border-white/5 bg-white/[0.01] hover:bg-white/[0.02] transition-all">
+                          <span className="text-xs font-bold text-zinc-300">{rule.label}</span>
+                          
+                          <select
+                            value={mapping[rule.typeKey] || ''}
+                            onChange={(e) => {
+                              const newMapping = { ...mapping, [rule.typeKey]: e.target.value };
+                              setMapping(newMapping);
+                              localStorage.setItem('zenScanAutoAssignMapping', JSON.stringify(newMapping));
+                            }}
+                            className="bg-primary-950/80 border border-white/10 text-white rounded-lg px-2.5 py-1.5 text-xs font-bold focus:border-ai-blue focus:ring-1 focus:ring-ai-blue/20 outline-none max-w-full sm:w-48 cursor-pointer"
+                          >
+                            <option value="">📁 Aucun dossier (À classer)</option>
+                            {availableFolders.map((folder) => (
+                              <option key={folder.id} value={folder.id}>
+                                📁 {folder.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest leading-loose mt-4 text-center">
+                      🤖 Les algorithmes de ZenScan analysent le contenu textuel et structurel par IA avant d'appliquer ces règles.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-end pt-4 border-t border-white/5">
+                <button 
+                  onClick={() => setShowCaptureSettings(false)}
+                  className="px-6 h-12 rounded-xl bg-ai-blue text-white font-black uppercase tracking-widest text-[10px] hover:bg-ai-blue/90 transition-all cursor-pointer shadow-lg active:scale-98"
+                >
+                  Enregistrer les choix
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

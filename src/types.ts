@@ -24,6 +24,8 @@ export interface DocumentMetadata {
   name: string;
   type: 'PDF' | 'JPG' | 'PNG';
   category?: string;
+  folderId?: string;
+  isFavorite?: boolean;
   size: string;
   modifiedAt: Date;
   createdAt?: Date;

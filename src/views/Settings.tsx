@@ -23,6 +23,7 @@ export default function Settings({ onNavigate }: SettingsProps) {
   const [realtimePred, setRealtimePred] = useState(localStorage.getItem('zenScanRealtimePred') !== 'false');
   const [ocrOptim, setOcrOptim] = useState(localStorage.getItem('zenScanOcrOptim') !== 'false');
   const [displayMode, setDisplayMode] = useState(localStorage.getItem('zenScanLibraryDisplay') || 'grid');
+  const [autoAssignFolder, setAutoAssignFolder] = useState(localStorage.getItem('zenScanAutoAssignFolder') !== 'false');
   const { mode, accentColor, toggleMode, setAccentColor } = useTheme();
   const { logout, user } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -55,6 +56,12 @@ export default function Settings({ onNavigate }: SettingsProps) {
     const newState = !ocrOptim;
     setOcrOptim(newState);
     localStorage.setItem('zenScanOcrOptim', String(newState));
+  };
+
+  const toggleAutoAssignFolder = () => {
+    const newState = !autoAssignFolder;
+    setAutoAssignFolder(newState);
+    localStorage.setItem('zenScanAutoAssignFolder', String(newState));
   };
 
   const toggleDisplayMode = () => {
@@ -240,6 +247,14 @@ export default function Settings({ onNavigate }: SettingsProps) {
               hasToggle 
               active={ocrOptim} 
               onClick={toggleOcrOptim}
+            />
+            <SettingsItem 
+              icon={Sparkles} 
+              label="Classement Dossier IA" 
+              detail="Classement intelligent automatique" 
+              hasToggle 
+              active={autoAssignFolder} 
+              onClick={toggleAutoAssignFolder}
             />
           </SettingsGroup>
 

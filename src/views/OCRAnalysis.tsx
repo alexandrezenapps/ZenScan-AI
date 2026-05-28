@@ -53,18 +53,49 @@ const SemanticItem = React.memo(({ item, isDiscovered, onUpdate }: { item: any, 
     }
   };
 
+  const confNum = parseFloat(item.conf);
+  const confPercent = isNaN(confNum) ? 85 : Math.round(confNum <= 1 ? confNum * 100 : confNum);
+
+  const getConfidenceLevel = () => {
+    if (confPercent >= 90) {
+      return {
+        label: 'Fiable',
+        colorClass: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25',
+        dotClass: 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]',
+      };
+    } else if (confPercent >= 70) {
+      return {
+        label: 'À valider',
+        colorClass: 'text-amber-400 bg-amber-500/10 border-amber-500/25',
+        dotClass: 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)]',
+      };
+    } else {
+      return {
+        label: 'Manuel',
+        colorClass: 'text-rose-400 bg-rose-500/10 border-rose-500/25 animate-pulse',
+        dotClass: 'bg-rose-400 shadow-[0_0_6px_rgba(251,113,133,0.5)]',
+      };
+    }
+  };
+
+  const status = getConfidenceLevel();
+
   return (
     <AnimatePresence>
       {isDiscovered && (
         <motion.div 
           initial={{ opacity: 0, x: -10 }} 
           animate={{ opacity: 1, x: 0 }}
-          className="flex flex-col gap-0.5 p-2.5 md:p-3.5 bg-white/[0.02] border border-white/5 rounded-xl md:rounded-2xl group hover:border-ai-blue/40 transition-all cursor-pointer"
+          className="flex flex-col gap-1 p-3 md:p-4 bg-white/[0.02] border border-white/5 rounded-xl md:rounded-2xl group hover:border-ai-blue/40 transition-all cursor-pointer"
           onClick={() => !isEditing && setIsEditing(true)}
         >
-          <div className="flex justify-between items-center opacity-40 group-hover:opacity-100 transition-opacity">
-            <span className="text-[7px] md:text-[8px] font-black tracking-[0.2em]">{item.label}</span>
-            <span className="text-[6px] md:text-[7px] font-mono text-ai-blue">Σ_{item.conf}</span>
+          <div className="flex justify-between items-center">
+            <span className="text-[8px] font-black tracking-[0.15em] text-zinc-400 uppercase opacity-60 group-hover:opacity-100 transition-opacity">{item.label}</span>
+            <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[8px] font-black select-none ${status.colorClass}`}>
+              <span className={`w-1 h-1 rounded-full ${status.dotClass}`} />
+              <span>{confPercent}% OCR</span>
+              <span className="opacity-50 text-[7px] hidden sm:inline">• {status.label}</span>
+            </div>
           </div>
           
           {isEditing ? (
@@ -255,7 +286,9 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
           }
         );
 
-        const { data: { text } } = await worker.recognize(localImage);
+        const { data } = await worker.recognize(localImage);
+        const text = data.text;
+        const avgConfidence = data.confidence || 85; 
         await worker.terminate();
 
         setProgress(100);
@@ -272,10 +305,15 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
         setDocName(`Offline Scan - ${new Date().toLocaleDateString()}`);
         setDetectedType(type);
         
+        // Derive field specific confidence levels using real tesseract confidence averages
+        const typeConf = Math.min(100, Math.max(10, avgConfidence + 2)) / 100;
+        const amountConf = Math.min(100, Math.max(10, avgConfidence - 15)) / 100;
+        const dateConf = Math.min(100, Math.max(10, avgConfidence - 5)) / 100;
+
         const newSemanticData = [
-          { id: 'type', label: 'TYPE_DOC', value: type, conf: '0.850' },
-          { id: 'amount', label: 'NET_VALUE', value: 'Extraction manuelle native', conf: '0.700', premium: false },
-          { id: 'date', label: 'EPOCH_REF', value: new Date().toLocaleDateString(), conf: '0.900' }
+          { id: 'type', label: 'TYPE_DOC', value: type, conf: typeConf.toFixed(3) },
+          { id: 'amount', label: 'NET_VALUE', value: 'Extraction manuelle native', conf: amountConf.toFixed(3), premium: false },
+          { id: 'date', label: 'EPOCH_REF', value: new Date().toLocaleDateString(), conf: dateConf.toFixed(3) }
         ];
         
         setSemanticData(newSemanticData);
@@ -463,6 +501,53 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
         finalUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
       }
 
+      // Determine folder ID based on auto-assignment rules
+      let assignedFolderId: string | undefined = undefined;
+      const isAutoAssignEnabled = localStorage.getItem('zenScanAutoAssignFolder') !== 'false';
+      if (isAutoAssignEnabled) {
+        // Read mapping
+        const defaultMapping: Record<string, string> = {
+          'Factures': 'f_receipts',
+          'Recettes': 'f_receipts',
+          'Contrats': 'f_work',
+          'Identité': 'f_personal',
+          'Personnel': 'f_personal',
+          'Travail': 'f_work'
+        };
+        
+        let savedMapping = defaultMapping;
+        const mappingStr = localStorage.getItem('zenScanAutoAssignMapping');
+        if (mappingStr) {
+          try {
+            savedMapping = { ...defaultMapping, ...JSON.parse(mappingStr) };
+          } catch (e) {}
+        }
+
+        // Try mapping with detectedType (e.g. FACTURE) or selectedCategory (e.g. Factures)
+        const key = semanticData.find(d => d.id === 'type')?.value || detectedType || selectedCategory;
+        
+        // Find folder id from key
+        if (key && savedMapping[key]) {
+          assignedFolderId = savedMapping[key];
+        } else if (selectedCategory && savedMapping[selectedCategory]) {
+          assignedFolderId = savedMapping[selectedCategory];
+        } else if (detectedType && savedMapping[detectedType]) {
+          assignedFolderId = savedMapping[detectedType];
+        }
+        
+        // Fallback checks for simple sub-string matches
+        if (!assignedFolderId && key) {
+          const lKey = key.toLowerCase();
+          if (lKey.includes('facture') || lKey.includes('invoice') || lKey.includes('reçu') || lKey.includes('receipt') || lKey.includes('ticket')) {
+            assignedFolderId = savedMapping['Factures'] || 'f_receipts';
+          } else if (lKey.includes('contrat') || lKey.includes('contract') || lKey.includes('professionnel') || lKey.includes('work') || lKey.includes('travail')) {
+            assignedFolderId = savedMapping['Contrats'] || 'f_work';
+          } else if (lKey.includes('identité') || lKey.includes('id') || lKey.includes('personnel') || lKey.includes('personal')) {
+            assignedFolderId = savedMapping['Personnel'] || 'f_personal';
+          }
+        }
+      }
+
       const newDoc: DocumentMetadata = {
         id: docId,
         userId: user.uid,
@@ -470,6 +555,7 @@ export default function OCRAnalysis({ onNavigate, onComplete, onSelectDocument, 
         type: finalType,
         category: selectedCategory,
         ocrLanguage: selectedLanguage,
+        folderId: assignedFolderId,
         url: finalUrl,
         thumbnailUrl: scannedImage || undefined,
         location: scannedLocation || undefined,
