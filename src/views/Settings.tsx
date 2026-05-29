@@ -10,6 +10,8 @@ import { AppView } from '../types';
 import { ICON_COLORS, updateAppMeta, SHAPES_LIST } from '../lib/icons';
 import { useAuth } from '../context/AuthContext';
 import { useTheme, THEME_COLORS, ThemeColor } from '../context/ThemeContext';
+import OfflineStorageSpace from '../components/OfflineStorageSpace';
+import ZenScanAutomations from '../components/ZenScanAutomations';
 
 interface SettingsProps {
   onNavigate: (view: AppView) => void;
@@ -222,6 +224,9 @@ export default function Settings({ onNavigate }: SettingsProps) {
               />
             </SettingsGroup>
           </div>
+
+          <OfflineStorageSpace />
+          <ZenScanAutomations />
         </div>
 
         {/* Right Column: AI & Appearance */}

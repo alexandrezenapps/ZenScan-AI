@@ -10,7 +10,7 @@ import {
   Download, MoreHorizontal, PenTool, Sparkles, 
   FileSearch, Languages, X, Plus, Trash2, ChevronLeft, ChevronRight,
   Share2, Mail, Copy, CheckCircle2, FileDown, CloudOff, Cloud, MapPin,
-  ArrowUp, ArrowDown
+  ArrowUp, ArrowDown, Flame, AlertCircle
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Reorder } from 'motion/react';
@@ -620,6 +620,132 @@ export default function Editor({ onNavigate, document }: EditorProps) {
     setTempDocName(docName);
   }, [docName]);
 
+  // --- OCR Confidence Heat-map Custom States ---
+  const [isHeatmapActive, setIsHeatmapActive] = useState(false);
+  const [ocrRegions, setOcrRegions] = useState<{
+    id: string;
+    text: string;
+    originalText: string;
+    confidence: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    isCorrected?: boolean;
+  }[]>([]);
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const [correctionText, setCorrectionText] = useState('');
+
+  // Generate OCR regions based on document snippet or fallback text
+  useEffect(() => {
+    if (!document) return;
+    
+    const textSnippet = document.contentSnippet || "Facture d'achat d'un ordinateur. Total à payer: 1450.00 EUR. Code de validation: E0F-99. ZenScan OCR validé.";
+    const sentences = textSnippet.split(/[.;:]/).map(s => s.trim()).filter(Boolean);
+    
+    const regions: any[] = [];
+    let index = 0;
+    
+    sentences.forEach((sentence, sIdx) => {
+      const rawWords = sentence.split(/\s+/).filter(w => w.length > 0);
+      
+      let i = 0;
+      while (i < rawWords.length) {
+        const numWords = Math.min(3, rawWords.length - i);
+        const segmentWords = rawWords.slice(i, i + numWords);
+        const textVal = segmentWords.join(' ');
+        
+        let confidence = 95 - (index * 2) % 6; // default 90% - 95%
+        
+        // Force low confidence on certain words/numbers/symbols
+        const lower = textVal.toLowerCase();
+        if (
+          lower.includes('e0f') || 
+          lower.includes('feclure') || 
+          lower.includes('total') || 
+          lower.includes('payer') || 
+          lower.includes('eur') || 
+          lower.includes('achat') || 
+          lower.includes('pc') ||
+          index === 3 || 
+          index === 6
+        ) {
+          confidence = 58 + (index * 7) % 20; // low: 58% to 78%
+        }
+        
+        confidence = Math.min(100, Math.max(30, confidence));
+        
+        const xIndex = (sIdx * 2 + i) % 4;
+        const yIndex = (sIdx + i) % 7;
+        
+        const x = 12 + xIndex * 18 + (Math.sin(index) * 2);
+        const y = 14 + yIndex * 12 + (Math.cos(index) * 3);
+        const width = Math.min(50, Math.max(16, textVal.length * 1.9));
+        const height = 4.5;
+        
+        regions.push({
+          id: `ocr-${document.id}-${index}`,
+          text: textVal,
+          originalText: textVal,
+          confidence,
+          x,
+          y,
+          width,
+          height,
+          isCorrected: false
+        });
+        
+        i += numWords;
+        index++;
+      }
+    });
+    
+    setOcrRegions(regions);
+  }, [document]);
+
+  const handleApplyCorrection = (regionId: string, newText: string) => {
+    if (!newText.trim() || !document) return;
+    
+    const updated = ocrRegions.map(reg => {
+      if (reg.id === regionId) {
+        return {
+          ...reg,
+          text: newText.trim(),
+          confidence: 100,
+          isCorrected: true
+        };
+      }
+      return reg;
+    });
+    
+    setOcrRegions(updated);
+    
+    // Reconstruct updated snippet
+    const updatedSnippet = updated.map(reg => reg.text).join(' ');
+    document.contentSnippet = updatedSnippet;
+    
+    // Save to database
+    storageService.updateDocument(document.id, { contentSnippet: updatedSnippet });
+    setSaveStatus('SAVING');
+    setTimeout(() => {
+      setSaveStatus('SAVED');
+      setTimeout(() => setSaveStatus('IDLE'), 1500);
+    }, 1500);
+
+    // Keep app view in sync
+    window.dispatchEvent(new Event('zen-scan-documents-changed'));
+    window.dispatchEvent(new Event('zen-scan-storage-updated'));
+    
+    setSelectedRegionId(null);
+    
+    // Splash custom interactive overlay toast
+    const el = window.document.createElement('div');
+    el.className = "fixed bottom-12 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-[10px] uppercase font-black tracking-widest px-6 py-4 rounded-2xl shadow-2xl z-50 animate-bounce flex items-center gap-2";
+    el.innerHTML = "<span>Correction appliquée avec succès (Confiance 100%) !</span>";
+    window.document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2500);
+  };
+
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1045,6 +1171,12 @@ export default function Editor({ onNavigate, document }: EditorProps) {
             active={activeTool === 'SIGN'} 
             onClick={() => setActiveTool(activeTool === 'SIGN' ? null : 'SIGN')} 
           />
+          <ToolbarButton 
+            icon={Flame} 
+            label="Heatmap OCR" 
+            active={isHeatmapActive} 
+            onClick={() => setIsHeatmapActive(!isHeatmapActive)} 
+          />
           <div className="ml-auto flex gap-2">
             <button 
               onClick={() => setIsExportModalOpen(true)}
@@ -1176,6 +1308,163 @@ export default function Editor({ onNavigate, document }: EditorProps) {
                 >
                   <img src={signatureData} alt="Signature" className="w-32 md:w-48 h-auto drop-shadow-sm pointer-events-none" />
                 </motion.div>
+              )}
+
+              {isHeatmapActive && (
+                <div className="absolute inset-0 z-30 pointer-events-auto bg-black/15">
+                  {/* Legend Overlay at the top of the document */}
+                  <div className="absolute top-2.5 inset-x-2.5 bg-zinc-950/90 backdrop-blur-md rounded-xl p-2 border border-white/10 flex items-center justify-between text-[8px] z-20 shadow-lg">
+                    <span className="font-black text-white uppercase tracking-widest flex items-center gap-1">
+                      <Flame className="w-3.5 h-3.5 text-red-500 animate-pulse animate-duration-1000" /> Carte de Chaleur OCR
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1 font-bold text-red-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
+                        Bas (&lt;75%)
+                      </span>
+                      <span className="flex items-center gap-1 font-bold text-amber-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                        Moyen (&lt;90%)
+                      </span>
+                      <span className="flex items-center gap-1 font-bold text-emerald-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 font-bold"></span>
+                        Validé (100%)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Hotspots clickable cells */}
+                  {ocrRegions.map((region) => {
+                    const isLow = region.confidence < 75;
+                    const isMid = region.confidence >= 75 && region.confidence < 90;
+                    const isHigh = region.confidence >= 90;
+
+                    let bgStyle = "";
+                    let borderStyle = "";
+                    let textStyle = "";
+
+                    if (isLow) {
+                      bgStyle = "bg-red-500/20 hover:bg-red-500/35 shadow-[0_0_8px_rgba(239,68,68,0.3)]";
+                      borderStyle = "border-red-500 animate-pulse decoration-red-500";
+                      textStyle = "text-red-400 text-[10px] font-black";
+                    } else if (isMid) {
+                      bgStyle = "bg-amber-400/15 hover:bg-amber-400/25";
+                      borderStyle = "border-amber-400/60";
+                      textStyle = "text-amber-400 text-[9px] font-semibold";
+                    } else {
+                      bgStyle = "bg-emerald-500/5 hover:bg-emerald-500/15";
+                      borderStyle = "border-emerald-500/30";
+                      textStyle = "text-emerald-400/85 text-[8px] font-medium";
+                    }
+
+                    return (
+                      <button
+                        key={region.id}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedRegionId(region.id);
+                          setCorrectionText(region.text);
+                        }}
+                        style={{
+                          left: `${region.x}%`,
+                          top: `${region.y}%`,
+                          width: `${region.width}%`,
+                          height: `${region.height}%`
+                        }}
+                        className={`absolute border rounded flex items-center justify-center cursor-pointer transition-all ${bgStyle} ${borderStyle} z-10 focus:outline-none hover:scale-105 active:scale-95 group`}
+                      >
+                        <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-black/85 backdrop-blur px-1.5 py-0.5 rounded border border-white/10 text-[6px] text-zinc-300 opacity-0 group-hover:opacity-100 font-bold uppercase transition-opacity duration-200 whitespace-nowrap pointer-events-none z-30">
+                          {region.confidence}% conf.
+                        </span>
+                        <span className={`px-1 truncate w-full text-center tracking-tight leading-none ${textStyle}`}>
+                          {region.text}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  
+                  {/* Floating Action Notice */}
+                  <div className="absolute bottom-2.5 inset-x-2.5 bg-zinc-950/80 backdrop-blur-sm rounded-xl p-2 border border-white/5 text-center text-[7px] text-zinc-400 font-medium z-10">
+                    Une zone vous semble mal numérisée ? Cliquez dessus pour rectifier manuellement.
+                  </div>
+                </div>
+              )}
+
+              {/* Inline OCR Edit Popup */}
+              {selectedRegionId && (
+                <div className="absolute inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-zinc-900 border border-white/15 rounded-2xl p-4.5 max-w-[260px] w-full space-y-3.5 shadow-2xl animate-in zoom-in-95 duration-250">
+                    <div className="flex justify-between items-center pb-2 border-b border-white/5">
+                      <span className="text-[9px] font-black tracking-widest text-ai-blue uppercase flex items-center gap-1">
+                        <Flame className="w-3.5 h-3.5 text-red-500" /> Correction OCR Manuelle
+                      </span>
+                      <button
+                        onClick={() => setSelectedRegionId(null)}
+                        className="p-1 hover:bg-white/10 rounded-full transition-colors text-zinc-400 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-1 bg-white/[0.02] border border-white/5 rounded-xl p-2.5">
+                      <div className="flex justify-between items-center text-[8px] font-bold text-zinc-500 uppercase tracking-widest">
+                        <span>Score de confiance</span>
+                        <span className={ocrRegions.find(r => r.id === selectedRegionId)!.confidence < 75 ? 'text-red-400' : 'text-amber-400'}>
+                          {ocrRegions.find(r => r.id === selectedRegionId)!.confidence}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden mt-1">
+                        <div 
+                          className={`h-full rounded-full ${
+                            ocrRegions.find(r => r.id === selectedRegionId)!.confidence < 75 
+                              ? 'bg-red-500' 
+                              : 'bg-amber-400'
+                          }`}
+                          style={{ width: `${ocrRegions.find(r => r.id === selectedRegionId)!.confidence}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 text-left">
+                      <label className="text-[9px] font-semibold text-zinc-400 uppercase tracking-wider block ml-0.5">Valeur extraite par l'IA</label>
+                      <p className="text-[10px] text-zinc-500 italic px-1 bg-white/[0.01] rounded">"{ocrRegions.find(r => r.id === selectedRegionId)!.originalText}"</p>
+                    </div>
+
+                    <div className="space-y-1.5 text-left">
+                      <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block ml-0.5">Corriger la saisie</label>
+                      <input
+                        type="text"
+                        value={correctionText}
+                        onChange={(e) => setCorrectionText(e.target.value)}
+                        className="w-full bg-[#0C0C0E] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 outline-none focus:border-ai-blue/50 transition-colors font-bold"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleApplyCorrection(selectedRegionId, correctionText);
+                          }
+                        }}
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRegionId(null)}
+                        className="h-9 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white font-black text-[9px] uppercase tracking-widest transition-colors"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyCorrection(selectedRegionId, correctionText)}
+                        className="h-9 rounded-xl bg-ai-blue text-white font-black text-[9px] uppercase tracking-widest hover:bg-ai-blue-600 transition-transform active:scale-95"
+                      >
+                        Valider
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
 
               <div className="absolute inset-0 border-[1px] border-black/5 pointer-events-none"></div>

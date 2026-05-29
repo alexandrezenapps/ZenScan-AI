@@ -371,7 +371,7 @@ class StorageService {
     const isCloudSyncEnabled = localStorage.getItem('zenScanCloudSync') !== 'false' && !(userId && userId.startsWith('guest_'));
     const now = new Date().toISOString();
     
-    const documentCopy = { 
+    let documentCopy = { 
       ...document, 
       modifiedAt: now,
       updatedAt: now,
@@ -380,6 +380,47 @@ class StorageService {
         ? document.createdAt.toISOString() 
         : (document.createdAt || now)
     } as any;
+
+    // Apply smart categorization/automation rules
+    try {
+      const savedRules = localStorage.getItem('zenScanAutomationRules');
+      if (savedRules) {
+        const rules = JSON.parse(savedRules);
+        const activeRules = rules.filter((r: any) => r.isActive);
+        
+        activeRules.forEach((rule: any) => {
+          const nameMatch = (documentCopy.name || '').toLowerCase().includes(rule.keyword);
+          const snippetMatch = (documentCopy.contentSnippet || '').toLowerCase().includes(rule.keyword);
+          
+          let isMatch = false;
+          if (rule.field === 'name') isMatch = nameMatch;
+          else if (rule.field === 'content') isMatch = snippetMatch;
+          else isMatch = nameMatch || snippetMatch;
+
+          if (isMatch) {
+            // Apply folder move if not set
+            if (rule.folderId && !documentCopy.folderId) {
+              documentCopy.folderId = rule.folderId;
+            }
+            // Append rule tags
+            if (rule.tags && rule.tags.length > 0) {
+              const currentTags = documentCopy.tags || [];
+              documentCopy.tags = Array.from(new Set([...currentTags, ...rule.tags]));
+            }
+            // Add Favorite
+            if (rule.isFavorite) {
+              documentCopy.isFavorite = true;
+            }
+            // Add Prefix name
+            if (rule.prefix && !documentCopy.name.startsWith(rule.prefix)) {
+              documentCopy.name = `${rule.prefix}${documentCopy.name}`;
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.error("[Storage] Error executing automation trigger:", e);
+    }
 
     // 1. Save to Local Storage (IndexedDB) - Rapid access
     try {

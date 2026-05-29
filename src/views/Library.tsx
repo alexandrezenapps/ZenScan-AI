@@ -53,7 +53,7 @@ const DocumentSkeleton: React.FC<{ idx: number, mode: 'grid' | 'list' }> = ({ id
 };
 
 // Memoized Document Card for performance
-const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection, onQuickPreview, onMouseMove, onHoverLeave, onToggleFavorite }: { 
+const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection, onQuickPreview, onMouseMove, onHoverLeave, onToggleFavorite, maxSize }: { 
   scan: DocumentMetadata, 
   idx: number, 
   onClick: (doc: DocumentMetadata) => void,
@@ -63,7 +63,8 @@ const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMo
   onQuickPreview: (doc: DocumentMetadata) => void,
   onMouseMove: (doc: DocumentMetadata, e: React.MouseEvent) => void,
   onHoverLeave: () => void,
-  onToggleFavorite: (id: string) => void
+  onToggleFavorite: (id: string) => void,
+  maxSize: number
 }) => {
   const displayUrl = scan.thumbnailUrl || scan.url;
   
@@ -92,7 +93,7 @@ const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMo
           e.dataTransfer.setData("text/plain", scan.id);
           e.dataTransfer.effectAllowed = "move";
         }}
-        className={`group relative bg-white/[0.02] border ${isSelected ? 'border-ai-blue ring-1 ring-ai-blue/10 bg-ai-blue/[0.02]' : 'border-white/5'} rounded-3xl overflow-hidden hover:border-white/20 transition-all duration-500 glass-card p-6 flex flex-col gap-5 cursor-pointer md:cursor-grab active:cursor-grabbing shadow-sm hover:shadow-2xl`}
+        className={`group relative bg-white/[0.02] border ${isSelected ? 'border-ai-blue ring-1 ring-ai-blue/10 bg-ai-blue/[0.02]' : 'border-white/5'} rounded-3xl overflow-hidden hover:border-white/20 hover:-translate-y-1.5 hover:scale-[1.02] hover:shadow-[0_20px_50px_rgba(0,0,0,0.35)] hover:shadow-ai-blue/5 transition-all duration-300 ease-out glass-card p-6 flex flex-col gap-5 cursor-pointer md:cursor-grab active:cursor-grabbing shadow-sm`}
       >
         <div 
           onClick={(e) => {
@@ -178,9 +179,70 @@ const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMo
             </div>
           )}
           
-          <div className="absolute bottom-3 left-4 flex items-center gap-2">
-             <span className="px-2 py-0.5 bg-black/40 backdrop-blur-md border border-white/10 rounded-md text-[8px] font-black text-white/50 uppercase tracking-widest">{scan.type}</span>
-             <span className="px-2 py-0.5 bg-black/40 backdrop-blur-md border border-white/10 rounded-md text-[8px] font-black text-white/50 uppercase tracking-widest">{scan.size}</span>
+          {/* Metadata Overlay Bottom Left with relative size indicator and progress bar */}
+          <div className="absolute bottom-3 left-4 flex flex-col gap-1.5 z-30 w-[calc(100%-2rem)]">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-black/40 backdrop-blur-md border border-white/10 rounded-md text-[8px] font-black text-white/50 uppercase tracking-widest leading-none">
+                {scan.type}
+              </span>
+              <span className="px-2 py-0.5 bg-black/40 backdrop-blur-md border border-white/10 rounded-md text-[8px] font-black text-white/50 uppercase tracking-widest leading-none flex items-center gap-1">
+                {scan.size}
+                {(() => {
+                  const parseSizeToBytes = (sizeStr: string): number => {
+                    const num = parseFloat(sizeStr.replace(/[^0-9.]/g, '')) || 0;
+                    const lower = sizeStr.toLowerCase();
+                    if (lower.includes('mb') || lower.includes('mo')) return num * 1024 * 1024;
+                    if (lower.includes('gb') || lower.includes('go')) return num * 1024 * 1024 * 1024;
+                    return num * 1024;
+                  };
+                  const currentBytes = parseSizeToBytes(scan.size);
+                  const pct = Math.min(100, Math.max(5, (currentBytes / maxSize) * 100));
+                  
+                  let sizeColorClass = "text-emerald-400";
+                  if (pct > 66) {
+                    sizeColorClass = "text-rose-450";
+                  } else if (pct > 33) {
+                    sizeColorClass = "text-amber-400";
+                  }
+                  return (
+                    <span className={`text-[7px] font-black ${sizeColorClass}`}>
+                      ({pct.toFixed(0)}%)
+                    </span>
+                  );
+                })()}
+              </span>
+            </div>
+            
+            {/* Elegant Slim Progress Bar representing relative file size in library */}
+            {(() => {
+              const parseSizeToBytes = (sizeStr: string): number => {
+                const num = parseFloat(sizeStr.replace(/[^0-9.]/g, '')) || 0;
+                const lower = sizeStr.toLowerCase();
+                if (lower.includes('mb') || lower.includes('mo')) return num * 1024 * 1024;
+                if (lower.includes('gb') || lower.includes('go')) return num * 1024 * 1024 * 1024;
+                return num * 1024;
+              };
+              const currentBytes = parseSizeToBytes(scan.size);
+              const pct = Math.min(100, Math.max(3, (currentBytes / (maxSize || 1)) * 100));
+              
+              let barColorClass = "from-emerald-500 to-teal-400";
+              if (pct > 66) {
+                barColorClass = "from-rose-500 to-orange-400 shadow-[0_0_8px_rgba(239,68,68,0.4)]";
+              } else if (pct > 33) {
+                barColorClass = "from-amber-500 to-yellow-400 shadow-[0_0_8px_rgba(245,158,11,0.3)]";
+              } else {
+                barColorClass = "from-emerald-500 to-cyan-400 shadow-[0_0_8px_rgba(16,185,129,0.2)]";
+              }
+              
+              return (
+                <div className="w-full h-1 bg-black/50 backdrop-blur-md rounded-full overflow-hidden p-[0.5px] border border-white/5" title={`Taille relative : ${pct.toFixed(0)}% de la taille maximale`}>
+                  <div 
+                    className={`h-full bg-gradient-to-r ${barColorClass} rounded-full transition-all duration-500 ease-out`} 
+                    style={{ width: `${pct}%` }} 
+                  />
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -268,7 +330,7 @@ const DocumentCard = React.memo(({ scan, idx, onClick, isSelected, isSelectionMo
   );
 });
 
-const DocumentListItem = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection, onQuickPreview, onMouseMove, onHoverLeave, onToggleFavorite }: { 
+const DocumentListItem = React.memo(({ scan, idx, onClick, isSelected, isSelectionMode, onToggleSelection, onQuickPreview, onMouseMove, onHoverLeave, onToggleFavorite, maxSize }: { 
   scan: DocumentMetadata, 
   idx: number, 
   onClick: (doc: DocumentMetadata) => void,
@@ -278,7 +340,8 @@ const DocumentListItem = React.memo(({ scan, idx, onClick, isSelected, isSelecti
   onQuickPreview: (doc: DocumentMetadata) => void,
   onMouseMove: (doc: DocumentMetadata, e: React.MouseEvent) => void,
   onHoverLeave: () => void,
-  onToggleFavorite: (id: string) => void
+  onToggleFavorite: (id: string) => void,
+  maxSize: number
 }) => {
   const displayUrl = scan.thumbnailUrl || scan.url;
   
@@ -357,7 +420,50 @@ const DocumentListItem = React.memo(({ scan, idx, onClick, isSelected, isSelecti
           <div className="flex items-center gap-2 text-[8px] md:text-[10px] text-zinc-500 tracking-widest font-black uppercase flex-wrap">
             <span>{scan.type}</span>
             <span className="w-1 h-1 rounded-full bg-zinc-700 font-normal"></span>
-            <span>{scan.size}</span>
+            
+            {/* Intelligent relative size wrapper */}
+            <div className="flex items-center gap-1.5 bg-white/[0.02] border border-white/5 rounded-md px-1.5 py-0.5" title="Taille relative du fichier">
+              <span>{scan.size}</span>
+              {(() => {
+                const parseSizeToBytes = (sizeStr: string): number => {
+                  const num = parseFloat(sizeStr.replace(/[^0-9.]/g, '')) || 0;
+                  const lower = sizeStr.toLowerCase();
+                  if (lower.includes('mb') || lower.includes('mo')) return num * 1024 * 1024;
+                  if (lower.includes('gb') || lower.includes('go')) return num * 1024 * 1024 * 1024;
+                  return num * 1024;
+                };
+                const currentBytes = parseSizeToBytes(scan.size);
+                const pct = Math.min(100, Math.max(3, (currentBytes / (maxSize || 1)) * 100));
+                
+                let sizeColorClass = "text-emerald-400";
+                let barColor = "bg-emerald-500";
+                if (pct > 66) {
+                  sizeColorClass = "text-rose-450";
+                  barColor = "bg-rose-500 shadow-[0_0_6px_rgba(239,68,68,0.4)]";
+                } else if (pct > 33) {
+                  sizeColorClass = "text-amber-400";
+                  barColor = "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.3)]";
+                } else {
+                  sizeColorClass = "text-emerald-400 bg-emerald-500/5";
+                  barColor = "bg-emerald-500";
+                }
+                
+                return (
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[8px] font-mono font-black ${sizeColorClass} tracking-tight normal-case leading-none`}>
+                      {pct.toFixed(0)}%
+                    </span>
+                    <div className="w-8 md:w-12 h-1 bg-white/5 border border-white/5 rounded-full overflow-hidden p-[0.5px]">
+                      <div 
+                        className={`h-full ${barColor} rounded-full transition-all duration-500`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
             <span className="hidden md:inline w-1 h-1 rounded-full bg-zinc-700 font-normal"></span>
             <span className="hidden md:inline">{scan.modifiedAt.toLocaleDateString()}</span>
             {scan.folderId && (
@@ -480,6 +586,23 @@ interface LibraryProps {
 export default function Library({ onNavigate, onSelectDocument }: LibraryProps) {
   const [documents, setDocuments] = useState<DocumentMetadata[]>([]);
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+
+  const maxDocSize = useMemo(() => {
+    const parseSizeToBytes = (sizeStr: string): number => {
+      const num = parseFloat(sizeStr.replace(/[^0-9.]/g, '')) || 0;
+      const lower = sizeStr.toLowerCase();
+      if (lower.includes('mb') || lower.includes('mo')) {
+        return num * 1024 * 1024;
+      }
+      if (lower.includes('gb') || lower.includes('go')) {
+        return num * 1024 * 1024 * 1024;
+      }
+      return num * 1024; // KB by default
+    };
+    if (documents.length === 0) return 1;
+    const sizes = documents.map(d => parseSizeToBytes(d.size));
+    return Math.max(...sizes, 1);
+  }, [documents]);
   
   // custom folders state & helper functions
   const [folders, setFolders] = useState<{ id: string; name: string; createdAt: string; color: string }[]>(() => {
@@ -2304,6 +2427,7 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
               }}
               onHoverLeave={() => setHoveredDoc(null)}
               onToggleFavorite={handleToggleFavorite}
+              maxSize={maxDocSize}
             />
           ) : (
             <DocumentListItem
@@ -2323,6 +2447,7 @@ export default function Library({ onNavigate, onSelectDocument }: LibraryProps) 
               }}
               onHoverLeave={() => setHoveredDoc(null)}
               onToggleFavorite={handleToggleFavorite}
+              maxSize={maxDocSize}
             />
           )
         ))}

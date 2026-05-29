@@ -119,7 +119,10 @@ export default function CloudSyncIndicator({ className = '' }: CloudSyncIndicato
   };
 
   return (
-    <div 
+    <motion.div 
+      initial={{ opacity: 0, y: 15, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
       className={`relative p-5 md:p-6 bg-white/[0.02] border border-white/5 rounded-2xl md:rounded-3xl hover:border-white/10 transition-all overflow-hidden ${className}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -162,23 +165,55 @@ export default function CloudSyncIndicator({ className = '' }: CloudSyncIndicato
               />
             </svg>
             <div className={`w-10 h-10 rounded-full flex items-center justify-center bg-zinc-950/80 backdrop-blur-md transition-all ${config.bgColor} ${config.glow}`}>
-              {config.icon}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={status.state}
+                  initial={{ scale: 0.7, opacity: 0, rotate: -30 }}
+                  animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                  exit={{ scale: 0.7, opacity: 0, rotate: 30 }}
+                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  className="flex items-center justify-center"
+                >
+                  {config.icon}
+                </motion.div>
+              </AnimatePresence>
             </div>
           </div>
 
           <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest italic leading-none">Status Cloud</span>
-              {status.state === 'synced' && (
-                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-              )}
+              <AnimatePresence mode="wait">
+                {status.state === 'synced' && (
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-            <h4 className="text-sm font-black tracking-tight text-white leading-tight truncate">
-              {config.title}
-            </h4>
-            <p className="text-[10px] md:text-xs text-zinc-500 font-bold leading-normal truncate">
-              {config.desc}
-            </p>
+            
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={status.state}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-0.5"
+              >
+                <h4 className="text-sm font-black tracking-tight text-white leading-tight truncate">
+                  {config.title}
+                </h4>
+                <p className="text-[10px] md:text-xs text-zinc-500 font-bold leading-normal truncate">
+                  {config.desc}
+                </p>
+              </motion.div>
+            </AnimatePresence>
           </div>
         </div>
 
@@ -320,6 +355,6 @@ export default function CloudSyncIndicator({ className = '' }: CloudSyncIndicato
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

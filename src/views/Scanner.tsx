@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Bolt, Zap, Camera, Image as ImageIcon, RotateCcw, Settings, Layers, RefreshCw, Languages, FileText, Calendar, Tag, Sparkles, CheckCircle2 } from 'lucide-react';
+import { X, Bolt, Zap, Camera, Image as ImageIcon, RotateCcw, Settings, Layers, RefreshCw, Languages, FileText, Calendar, Tag, Sparkles, CheckCircle2, Sliders, Video, Play, Download, Trash, Eye, Info } from 'lucide-react';
 import { AppView, ScanStatus } from '../types';
 import { GlassCard } from '../components/PremiumComponents';
 import { detectObjectsInImage, DetectedObject } from '../services/geminiService';
@@ -47,6 +47,129 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
   };
   
   const [showCaptureSettings, setShowCaptureSettings] = useState(false);
+  
+  // --- HD, Retouch & Video Recording States ---
+  const [resolution, setResolution] = useState<'sd' | 'hd' | 'fhd' | '4k' | '8k'>(() => {
+    return (localStorage.getItem('zenScanResolution') as any) || 'fhd';
+  });
+  const [isPerformanceBoostEnabled, setIsPerformanceBoostEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('zenScanPerformanceBoost') === 'true';
+  });
+  const [selectedFilter, setSelectedFilter] = useState<string>('auto');
+  const [retouchContrast, setRetouchContrast] = useState<number>(1.0);
+  const [retouchBrightness, setRetouchBrightness] = useState<number>(1.0);
+  const [retouchSaturation, setRetouchSaturation] = useState<number>(1.0);
+  const [retouchWarmth, setRetouchWarmth] = useState<number>(0);
+  
+  const [captureType, setCaptureType] = useState<'photo' | 'video'>('photo');
+  const [isRecordingVideo, setIsRecordingVideo] = useState<boolean>(false);
+  const [recordingTime, setRecordingTime] = useState<number>(0);
+  const [videoBlobs, setVideoBlobs] = useState<{ url: string; duration: number; date: string }[]>([]);
+  const [selectedPreviewVideo, setSelectedPreviewVideo] = useState<string | null>(null);
+
+  const [showResolutionQuickSelect, setShowResolutionQuickSelect] = useState<boolean>(false);
+  const [showRetouchPanel, setShowRetouchPanel] = useState<boolean>(false);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<any>(null);
+
+  // Apply real-time retouches on the view dynamically
+  const getVideoFilterString = () => {
+    let base = '';
+    if (selectedFilter === 'auto') {
+      base = `contrast(1.25) brightness(1.04) saturate(1.05)`;
+    } else if (selectedFilter === 'monochrome') {
+      base = `grayscale(1.0) contrast(1.45) brightness(1.05)`;
+    } else if (selectedFilter === 'magic-color') {
+      base = `saturate(1.55) contrast(1.1) brightness(1.02)`;
+    } else if (selectedFilter === 'ultra-sharpness') {
+      base = `contrast(1.6) brightness(1.0) saturate(0.85)`;
+    } else {
+      base = `none`;
+    }
+
+    if (base === 'none') {
+      return `contrast(${retouchContrast}) brightness(${retouchBrightness}) saturate(${retouchSaturation}) sepia(${retouchWarmth > 0 ? retouchWarmth / 100 : 0})`;
+    } else {
+      return `${base} contrast(${retouchContrast}) brightness(${retouchBrightness}) saturate(${retouchSaturation})`;
+    }
+  };
+
+  const startVideoRecording = () => {
+    if (!streamRef.current) return;
+    recordedChunksRef.current = [];
+    
+    try {
+      const mimeTypes = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=h264,opus',
+        'video/webm',
+        'video/mp4'
+      ];
+      
+      let selectedMime = '';
+      for (const mime of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mime)) {
+          selectedMime = mime;
+          break;
+        }
+      }
+
+      const options = selectedMime ? { mimeType: selectedMime } : undefined;
+      const recorder = new MediaRecorder(streamRef.current, options);
+      
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+      
+      recorder.onstop = () => {
+        const videoBlob = new Blob(recordedChunksRef.current, { type: selectedMime || 'video/webm' });
+        const videoUrl = URL.createObjectURL(videoBlob);
+        setVideoBlobs(prev => [...prev, {
+          url: videoUrl,
+          duration: recordingTime,
+          date: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        }]);
+        setIsRecordingVideo(false);
+        setRecordingTime(0);
+      };
+      
+      mediaRecorderRef.current = recorder;
+      recorder.start(100); // chunk size time-slice
+      setIsRecordingVideo(true);
+      setRecordingTime(0);
+      
+    } catch (err) {
+      console.error("Failed to start video recording:", err);
+      alert("Erreur lors de l'accès au module d'enregistrement vidéo. Veuillez vérifier les permissions de votre navigateur.");
+    }
+  };
+
+  const stopVideoRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecordingVideo(false);
+  };
+
+  // Recording timer
+  useEffect(() => {
+    let interval: any = null;
+    if (isRecordingVideo) {
+      interval = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (interval) clearInterval(interval);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isRecordingVideo]);
   const [autoAssign, setAutoAssign] = useState(() => {
     return localStorage.getItem('zenScanAutoAssignFolder') !== 'false';
   });
@@ -281,12 +404,39 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
 
   const startCamera = async () => {
     stopCamera();
+    
+    // Resolve dynamic resolution and premium quality settings from local preferences
+    const activeRes = localStorage.getItem('zenScanResolution') || 'fhd';
+    const isPerfBoost = localStorage.getItem('zenScanPerformanceBoost') === 'true';
+    const fps = isPerfBoost ? 60 : 30;
+
+    let targetWidthVal = 1920;
+    let targetHeightVal = 1080;
+
+    if (activeRes === 'sd') {
+      targetWidthVal = 854;
+      targetHeightVal = 480;
+    } else if (activeRes === 'hd') {
+      targetWidthVal = 1280;
+      targetHeightVal = 720;
+    } else if (activeRes === 'fhd') {
+      targetWidthVal = 1920;
+      targetHeightVal = 1080;
+    } else if (activeRes === '4k') {
+      targetWidthVal = 3840;
+      targetHeightVal = 2160;
+    } else if (activeRes === '8k') {
+      targetWidthVal = 7680;
+      targetHeightVal = 4320;
+    }
+
     try {
       const constraints: MediaStreamConstraints = {
         video: { 
           facingMode: { ideal: facingMode },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
+          width: { ideal: targetWidthVal },
+          height: { ideal: targetHeightVal },
+          frameRate: { ideal: fps }
         }
       };
       
@@ -308,10 +458,13 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
         }
       }
     } catch (err) {
-      console.error("Error accessing camera:", err);
-      // Fallback for some browsers/devices
+      console.warn("Retrying with fallback camera bounds due to constraint error:", err);
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: { ideal: facingMode } 
+          } 
+        });
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
         setHasCameraAccess(true);
@@ -494,7 +647,14 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
             ctx.fillText('Fait à Paris, le 2026-05-09 en deux exemplaires originaux.', 150, 1055);
           }
           
-          capturedImage = canvas.toDataURL('image/jpeg', 0.85);
+          // Apply dynamic filters to virtual document template
+          const filterStr = getVideoFilterString();
+          if (filterStr !== 'none') {
+            ctx.filter = filterStr;
+            ctx.drawImage(canvas, 0, 0);
+          }
+          
+          capturedImage = canvas.toDataURL('image/jpeg', 0.92);
         }
       } else if (videoRef.current && videoRef.current.readyState >= 2) {
         const video = videoRef.current;
@@ -503,8 +663,16 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
         
         if (width > 0 && height > 0) {
           const canvas = document.createElement('canvas');
-          // Optimized dimensions for processing and storage
-          const maxDim = 1000; 
+          
+          // Dynamic dimensions depending on the Selected HD resolution options
+          const activeRes = localStorage.getItem('zenScanResolution') || 'fhd';
+          let maxDim = 1920; 
+          if (activeRes === 'sd') maxDim = 854;
+          else if (activeRes === 'hd') maxDim = 1280;
+          else if (activeRes === 'fhd') maxDim = 1920;
+          else if (activeRes === '4k') maxDim = 3840;
+          else if (activeRes === '8k') maxDim = 7680;
+
           let targetWidth = width;
           let targetHeight = height;
           
@@ -532,23 +700,20 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
               ctx.scale(-1, 1);
             }
 
+            // Apply dynamic filter during draw call for HD image enhancements
+            const filterStr = getVideoFilterString();
+            if (filterStr !== 'none') {
+              ctx.filter = filterStr;
+            }
+
             // Draw original frame
             ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-            
-            // Image Enhancement Filters
-            // 1. Boost contrast slightly
-            // 2. Grayscale (if mode is DOCUMENT or Receipt)
-            if (activeMode === 'DOCUMENT' || activeMode === 'RECEIPT' || activeMode === 'OCR') {
-               ctx.filter = 'contrast(1.2) brightness(1.05) grayscale(0.8)';
-               // Redraw with filters
-               ctx.drawImage(canvas, 0, 0);
-            }
             
             // Reset filter
             ctx.filter = 'none';
             
-            // Use 0.75 quality for high compression while preserving text readability
-            capturedImage = canvas.toDataURL('image/jpeg', 0.75);
+            // Use 0.92 quality for HD compression with outstanding clarity
+            capturedImage = canvas.toDataURL('image/jpeg', 0.92);
           }
         }
       }
@@ -857,8 +1022,11 @@ export default function Scanner({ onNavigate, onScanComplete }: ScannerProps) {
                 autoPlay 
                 playsInline 
                 muted
-                className="w-full h-full object-cover"
-                style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+                className="w-full h-full object-cover transition-all duration-300"
+                style={{ 
+                  transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+                  filter: getVideoFilterString()
+                }}
               />
             )}
             {/* Real-time Object Translation Overlays */}
